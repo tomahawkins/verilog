@@ -1,0 +1,44 @@
+name:    verilog
+version: 0.0.0
+
+category: Language, Hardware
+
+synopsis: A Verilog parser.
+
+description:
+  TODO
+
+author:     Tom Hawkins <tomahawkins@gmail.com>
+maintainer: Tom Hawkins <tomahawkins@gmail.com>
+
+license:      BSD3
+license-file: LICENSE
+
+homepage: http://github.com/tomahawkins/verilog
+
+build-type:    Simple
+cabal-version: >= 1.6
+
+library
+    build-depends:
+        base       >= 4.0     && < 5,
+        mtl        >= 1.1.0.1 && < 2.1,
+        containers >= 0.3.0.0 && < 0.4,
+        array      >= 0.3.0.0 && < 0.4,
+        parsec     >= 2.1.0.1 && < 2.2
+
+    exposed-modules:
+        Language.Verilog
+        Language.Verilog.Tokens
+        Language.Verilog.Lexer
+        Language.Verilog.Parser
+        Language.Verilog.Preprocessor
+
+    extensions: TypeSynonymInstances
+
+    ghc-options: -W
+
+source-repository head
+    type:     git
+    location: git://github.com/tomahawkins/verilog.git
+
