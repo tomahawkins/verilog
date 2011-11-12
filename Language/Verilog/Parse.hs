@@ -49,6 +49,15 @@ identifiers = oneOf
   , do {                                                   return []      }
   ]
 
+string :: Verilog String
+string = satisfy (\ (Token t _ _) -> t == Lit_string ) >>= return . tail . init . tokenString
+
+number :: Verilog String
+number = oneOf
+  [ satisfy (\ (Token t _ _) -> t == Lit_number_unsigned) >>= return . tokenString
+  , satisfy (\ (Token t _ _) -> t == Lit_number         ) >>= return . tokenString
+  ]
+
 modules :: Verilog [Module]
 modules = do { m <- many1 module_; eof; return m }
 
@@ -63,9 +72,31 @@ modulePortList = oneOf
 
 moduleItem :: Verilog ModuleItem
 moduleItem = oneOf
-  [ do { tok KW_parameter; a <- identifier; tok Sym_equal; b <- expr; tok Sym_semi; return $ Paremeter a b }
+  [ do { tok KW_parameter; a <- identifier; tok Sym_eq; b <- expr; tok Sym_semi; return $ Paremeter a b }
+  , do { a <- net; b <- bus; c <- identifiers;                     tok Sym_semi; return $ a b c         }
   ]
 
+expr :: Verilog Expr
+expr = oneOf
+  [ do { a <- string;     return $ String a     }
+  , do { a <- number;     return $ Number a     }
+  , do { a <- identifier; return $ Identifier a }
+  ]
+
+bus :: Verilog (Maybe (Expr, Expr))
+bus = oneOf
+  [ do { tok Sym_brack_l; a <- expr; tok Sym_colon; b <- expr; tok Sym_brack_r; return $ Just (a, b) }
+  , do {                                                                        return $ Nothing     }
+  ]
+
+net :: Verilog (Maybe (Expr, Expr) -> [Name] -> ModuleItem)
+net = oneOf
+  [ do { tok KW_input;  return $ Input  }
+  , do { tok KW_output; return $ Output }
+  , do { tok KW_inout;  return $ Inout  }
+  , do { tok KW_wire;   return $ Wire   }
+  , do { tok KW_reg;    return $ Reg    }
+  ]
 
 {-
 
