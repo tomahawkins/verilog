@@ -53,7 +53,7 @@ modules :: Verilog [Module]
 modules = do { m <- many1 module_; eof; return m }
 
 module_ :: Verilog Module
-module_ = do { tok KW_module; name <- identifier; modulePortList; tok Sym_semi; tok KW_endmodule; return $ Module name }
+module_ = do { tok KW_module; name <- identifier; modulePortList; tok Sym_semi; items <- many1 moduleItem; tok KW_endmodule; return $ Module name items }
 
 modulePortList :: Verilog [Name]
 modulePortList = oneOf
@@ -61,6 +61,10 @@ modulePortList = oneOf
   , do {                                                     return [] }
   ]
 
+moduleItem :: Verilog ModuleItem
+moduleItem = oneOf
+  [ do { tok KW_parameter; a <- identifier; tok Sym_equal; b <- expr; tok Sym_semi; return $ Paremeter a b }
+  ]
 
 
 {-
