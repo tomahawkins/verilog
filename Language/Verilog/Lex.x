@@ -13,6 +13,7 @@ import Language.Verilog.Tokens
 -- Comments
 
 @commentEOL = \/\/ [^\n]* \n
+@comment    = \/\* ([^\/][^\*])* \*\/
 
 -- Numbers
 
@@ -66,6 +67,9 @@ $sign = [\+\-]
 
 
 tokens :-
+
+  "module"           { tok KW_module     }
+  "endmodule"        { tok KW_endmodule  }
 
   @simpleIdentifier  { tok Id_simple  }
   @escapedIdentifier { tok Id_escaped }
@@ -164,7 +168,8 @@ tokens :-
 
   $white             ;
 
-  @commentEOL        ;  -- XXX /* ... */
+  @commentEOL        ;
+  @comment           ;
 
   .                  { tok Unknown }
 

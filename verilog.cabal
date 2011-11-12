@@ -22,13 +22,15 @@ cabal-version: >= 1.6
 library
     build-depends:
         base       >= 4.0     && < 5,
-        array
+        array,
+        polyparse
 
     exposed-modules:
-        --Language.Verilog
+        Language.Verilog
         Language.Verilog.Tokens
+        Language.Verilog.Types
         Language.Verilog.Lex
-        --Language.Verilog.Parse
+        Language.Verilog.Parse
         --Language.Verilog.Preprocessor
 
     extensions:

@@ -1,10 +1,69 @@
-module Language.Verilog.Parser ( parseVerilog ) where
+module Language.Verilog.Parse
+  ( parseFile
+  ) where
 
-import Text.ParserCombinators.Parsec
-import Text.ParserCombinators.Parsec.Pos
+import Text.ParserCombinators.Poly.Plain
 
 import Language.Verilog.Tokens
-import Language.Verilog.Lexer
+import Language.Verilog.Types
+import Language.Verilog.Lex
+
+parseFile :: FilePath -> String -> [Module]
+parseFile file content = case parseTokens tokens of
+    Right a -> a
+    Left  m -> error m
+  where
+  tokens = map relocate $ alexScanTokens content
+  relocate :: Token -> Token
+  relocate (Token t s (Position _ l c)) = Token t s $ Position file l c
+
+parseTokens :: [Token] -> Either String [Module]
+parseTokens tokens = case runParser modules tokens of
+    (Right a, [])          -> Right a
+    (Left msg, t : _) -> Left $ msg ++ "  " ++ show t
+    (Left msg, [])         -> Left msg
+    (Right _, rest)        -> Left $ "Didn't finish parsing tokens: " ++ show rest
+
+type Verilog = Parser Token
+
+tok :: TokenInfo -> Verilog ()
+tok a = satisfy (\ (Token t _ _) -> t == a) >> return ()
+
+{-
+integer :: Asm Integer
+integer = do
+  (T.IntegerConst a, _) <- satisfy $ \ (a, _) -> case a of { T.IntegerConst _ -> True; _ -> False }
+  -}
+
+identifier :: Verilog Name
+identifier = oneOf
+  [ satisfy (\ (Token t _ _) -> t == Id_simple ) >>= return . tokenString
+  , satisfy (\ (Token t _ _) -> t == Id_escaped) >>= return . tokenString
+  , satisfy (\ (Token t _ _) -> t == Id_system ) >>= return . tokenString
+  ]
+
+identifiers :: Verilog [Name]
+identifiers = oneOf
+  [ do { a <- identifier; tok Sym_comma; b <- identifiers; return $ a : b }
+  , do { a <- identifier;                                  return [a]     }
+  , do {                                                   return []      }
+  ]
+
+modules :: Verilog [Module]
+modules = do { m <- many1 module_; eof; return m }
+
+module_ :: Verilog Module
+module_ = do { tok KW_module; name <- identifier; modulePortList; tok Sym_semi; tok KW_endmodule; return $ Module name }
+
+modulePortList :: Verilog [Name]
+modulePortList = oneOf
+  [ do { tok Sym_paren_l; a <- identifiers; tok Sym_paren_r; return a  }
+  , do {                                                     return [] }
+  ]
+
+
+
+{-
 
 parseVerilog :: String -> IO ()
 parseVerilog verilog = parseTest source_text $ concatMap lexSection $ deline verilog
@@ -1805,6 +1864,7 @@ hierarchical_branch_0
 
 -}
 
+-}
 
 
 

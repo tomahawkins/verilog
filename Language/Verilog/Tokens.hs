@@ -2,9 +2,13 @@ module Language.Verilog.Tokens
   ( Token     (..)
   , TokenInfo (..)
   , Position  (..)
+  , tokenString
   ) where
 
 import Text.Printf
+
+tokenString :: Token -> String
+tokenString (Token _ s _) = s
 
 data Position = Position String Int Int deriving Eq
 
