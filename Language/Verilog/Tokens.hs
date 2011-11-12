@@ -1,18 +1,17 @@
 module Language.Verilog.Tokens
-  ( Token (..)
+  ( Token     (..)
   , TokenInfo (..)
-  , Position
-  , keywordOrId
+  , Position  (..)
   ) where
 
-import Data.Map
+import Text.Printf
 
-type Position = (String,Int,Int)
+data Position = Position String Int Int deriving Eq
 
 instance Show Position where
-  show (file,l,c) = "(" ++ file ++ "," ++ show l ++ "," ++ show c ++ ")"
+  show (Position f l c) = printf "%s:%d:%d" f l c
 
-data Token = Token TokenInfo Position String
+data Token = Token TokenInfo String Position deriving (Show, Eq)
 
 data TokenInfo
   = KW_alias 
@@ -333,10 +332,7 @@ data TokenInfo
   | Unknown
   deriving (Show, Eq)
 
-instance Show Token where
-  show (Token Unknown p s) = "UNKNOWN: " ++ show p ++ "  " ++ s
-  show (Token _ p s)       = show p ++ "  " ++ s
-
+{-
 keywordOrId :: String -> TokenInfo
 keywordOrId s = findWithDefault Id_simple s keywords
 
@@ -585,3 +581,4 @@ keywords = fromList
   -- \$timeskew
   -- \$unit
   -- \$width
+-}

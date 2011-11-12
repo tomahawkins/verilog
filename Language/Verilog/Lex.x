@@ -1,6 +1,11 @@
 {
-module Language.Verilog.Lexer (Token, AlexPosn, alexScanTokens) where
+{-# OPTIONS_GHC -w #-}
+module Language.Verilog.Lex
+  ( alexScanTokens
+  ) where
+
 import Language.Verilog.Tokens
+
 }
 
 %wrapper "posn"
@@ -62,9 +67,9 @@ $sign = [\+\-]
 
 tokens :-
 
-  @simpleIdentifier  { \ p s -> tok (keywordOrId s) p s }
+  @simpleIdentifier  { tok Id_simple  }
   @escapedIdentifier { tok Id_escaped }
-  @systemIdentifier  { tok Id_system }
+  @systemIdentifier  { tok Id_system  }
 
   @unsignedNumber    { tok Lit_number_unsigned }
   @number            { tok Lit_number }
@@ -165,7 +170,7 @@ tokens :-
 
 {
 tok :: TokenInfo -> AlexPosn -> String -> Token
-tok t (AlexPn _ l c) s = Token t ("???",l,c) s
+tok t (AlexPn _ l c) s = Token t s $ Position "" l c
 }
 
 
