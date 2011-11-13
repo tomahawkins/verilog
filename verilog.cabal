@@ -31,7 +31,7 @@ library
         Language.Verilog.Types
         Language.Verilog.Lex
         Language.Verilog.Parse
-        --Language.Verilog.Preprocessor
+        Language.Verilog.Preprocess
 
     extensions:
 

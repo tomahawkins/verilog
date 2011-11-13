@@ -10,11 +10,6 @@ import Language.Verilog.Tokens
 
 %wrapper "posn"
 
--- Comments
-
-@commentEOL = \/\/ [^\n]* \n
-@comment    = \/\* ([^\/][^\*])* \*\/
-
 -- Numbers
 
 $xDigit = [xX]
@@ -70,9 +65,14 @@ tokens :-
 
   "always"           { tok KW_always     }
   "assign"           { tok KW_assign     }
+  "begin"            { tok KW_begin      }
+  "end"              { tok KW_end        }
   "endmodule"        { tok KW_endmodule  }
+  "for"              { tok KW_for        }
+  "initial"          { tok KW_initial    }
   "inout"            { tok KW_inout      }
   "input"            { tok KW_input      }
+  "integer"          { tok KW_integer    }
   "module"           { tok KW_module     }
   "negedge"          { tok KW_negedge    }
   "or"               { tok KW_or         }
@@ -178,9 +178,6 @@ tokens :-
   ">>>="             { tok Sym_gt_gt_gt_eq }
 
   $white             ;
-
-  @commentEOL        ;
-  @comment           ;
 
   .                  { tok Unknown }
 
