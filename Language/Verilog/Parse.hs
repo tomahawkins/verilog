@@ -9,12 +9,12 @@ import Language.Verilog.Types
 import Language.Verilog.Lex
 import Language.Verilog.Preprocess
 
-parseFile :: FilePath -> String -> [Module]
-parseFile file content = case parseTokens tokens of
+parseFile :: [(String, String)] -> FilePath -> String -> [Module]
+parseFile env file content = case parseTokens tokens of
     Right a -> a
     Left  m -> error m
   where
-  tokens = map relocate $ alexScanTokens $ uncomment file content
+  tokens = map relocate $ alexScanTokens $ preprocess env file content
   relocate :: Token -> Token
   relocate (Token t s (Position _ l c)) = Token t s $ Position file l c
 
@@ -37,9 +37,6 @@ identifier = oneOf
   , satisfy (\ (Token t _ _) -> t == Id_system ) >>= return . tokenString
   ]
 
-identifiers :: Verilog [Identifier]
-identifiers = commaList identifier
-
 commaList :: Verilog a -> Verilog [a]
 commaList item = oneOf
   [ do { a <- item; tok Sym_comma; b <- commaList item; return $ a : b }
@@ -59,15 +56,15 @@ number :: Verilog String
 number = satisfy (\ (Token t _ _) -> t == Lit_number) >>= return . tokenString
 
 modules :: Verilog [Module]
-modules = do { m <- many1 module_; eof; return m }
+modules = do { m <- many module_; eof; return m }
 
 module_ :: Verilog Module
-module_ = do { tok KW_module; name <- identifier; ports <- modulePortList; tok Sym_semi; items <- many1 moduleItem; tok KW_endmodule; return $ Module name ports items }
+module_ = do { tok KW_module; name <- identifier; ports <- modulePortList; tok Sym_semi; items <- many moduleItem; tok KW_endmodule; return $ Module name ports items }
 
 modulePortList :: Verilog [Identifier]
 modulePortList = oneOf
-  [ do { tok Sym_paren_l; a <- identifiers; tok Sym_paren_r; return a  }
-  , do {                                                     return [] }
+  [ do { tok Sym_paren_l; a <- commaList identifier; tok Sym_paren_r; return a  }
+  , return []
   ]
 
 moduleItem :: Verilog ModuleItem
