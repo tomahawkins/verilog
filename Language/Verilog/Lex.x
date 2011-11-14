@@ -65,6 +65,7 @@ tokens :-
   "default"          { tok KW_default    }
   "else"             { tok KW_else       }
   "end"              { tok KW_end        }
+  "endcase"          { tok KW_endcase    }
   "endmodule"        { tok KW_endmodule  }
   "for"              { tok KW_for        }
   "if"               { tok KW_if         }

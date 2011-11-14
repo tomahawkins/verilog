@@ -6,6 +6,7 @@ module Language.Verilog.Types
   , Expr       (..)
   , Sense      (..)
   , LHS        (..)
+  , Call       (..)
   , Case
   , Range
   ) where
@@ -23,7 +24,7 @@ instance Show Module where
 -}
 
 data ModuleItem
-  = Paremeter Identifier Expr
+  = Paremeter (Maybe Range) Identifier Expr
   | Input     (Maybe Range) [(Identifier, Maybe Range)]
   | Output    (Maybe Range) [(Identifier, Maybe Range)]
   | Inout     (Maybe Range) [(Identifier, Maybe Range)]
@@ -32,12 +33,14 @@ data ModuleItem
   | Initial    Stmt
   | Always     Sense Stmt
   | Assign     LHS Expr
+  | Instance   Identifier [(Identifier, Maybe Expr)] Identifier [(Identifier, Maybe Expr)]
   deriving (Show, Eq)
 
 data Expr
   = String     String
   | Number     String
   | ExprLHS    LHS
+  | ExprCall   Call
   | Not        Expr
   | And        Expr Expr
   | Or         Expr Expr
@@ -71,11 +74,14 @@ data Stmt
   | NonBlockingAssignment LHS Expr
   | For                   (Identifier, Expr) Expr (Identifier, Expr) Stmt
   | If                    Expr Stmt Stmt
-  | Call                  Identifier [Expr]
+  | StmtCall              Call
+  | Delay                 String Stmt
   | Null
   deriving (Show, Eq)
 
 type Case = ([Expr], Stmt)
+
+data Call = Call Identifier [Expr] deriving (Show, Eq)
 
 data Sense
   = Sense        LHS

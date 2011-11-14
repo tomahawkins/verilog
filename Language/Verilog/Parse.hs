@@ -72,15 +72,28 @@ modulePortList = oneOf
 
 moduleItem :: Verilog ModuleItem
 moduleItem = oneOf
-  [ do { tok KW_parameter; commit $ do { a <- identifier; tok Sym_eq; b <- expr; tok Sym_semi; return $ Paremeter a b } }
+  [ do { tok KW_parameter; commit $ do { a <- optional range; b <- identifier; tok Sym_eq; c <- expr; tok Sym_semi; return $ Paremeter a b c } }
   , do { a <- net;         commit $ do { b <- optional range; c <- declarations; tok Sym_semi; return $ a b c         } }
   , do { tok KW_assign;    commit $ do { a <- lhs; tok Sym_eq; b <- expr;        tok Sym_semi; return $ Assign a b    } }
   , do { tok KW_initial;   commit $ do { a <- stmt;                                                           return $ Initial a    } }
   , do { tok KW_always;    commit $ do { tok Sym_at; tok Sym_paren_l; a <- sense; tok Sym_paren_r; b <- stmt; return $ Always a b   } }
+  , do { a <- identifier; b <- parameterBindings; c <- identifier; d <- signalBindings; tok Sym_semi; return $ Instance a b c d }
   ]
 
+parameterBindings :: Verilog [(Identifier, Maybe Expr)]
+parameterBindings = oneOf
+  [ do { tok Sym_pound; signalBindings }
+  , return []
+  ]
+
+signalBindings :: Verilog [(Identifier, Maybe Expr)]
+signalBindings = do { tok Sym_paren_l; a <- commaList binding; tok Sym_paren_r; return a }
+
+binding :: Verilog (Identifier, Maybe Expr)
+binding = do { tok Sym_dot; a <- identifier; tok Sym_paren_l; b <- optional expr; tok Sym_paren_r; return (a, b) }
+
 range :: Verilog Range
-range = do { tok Sym_brack_l; a <- expr; tok Sym_colon; b <- expr; tok Sym_brack_r; return $ Range a b }
+range = do { tok Sym_brack_l; a <- expr; tok Sym_colon; b <- expr; tok Sym_brack_r; return (a, b) }
 
 bit :: Verilog Expr
 bit = do { tok Sym_brack_l; a <- expr; tok Sym_brack_r; return a }
@@ -148,9 +161,10 @@ chainl1 p op = do { x <- p; rest x }
 
 exprTop :: Verilog Expr
 exprTop = oneOf
-  [ do { a <- string;     return $ String  a }
-  , do { a <- number;     return $ Number  a }
-  , do { a <- lhs;        return $ ExprLHS a }
+  [ do { a <- call;       return $ ExprCall a }
+  , do { a <- string;     return $ String   a }
+  , do { a <- number;     return $ Number   a }
+  , do { a <- lhs;        return $ ExprLHS  a }
   , do { tok Sym_paren_l; a <- expr; tok Sym_paren_r; return a }
   , do { tok Sym_bang;    a <- expr;                  return $ Not a   }
   , do { tok Sym_tildy;   a <- expr;                  return $ BWNot a }
@@ -167,10 +181,14 @@ stmt = oneOf
   , do { tok KW_if; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- stmt;                         return $ If a b Null }
   , do { a <- lhs; tok Sym_eq;    b <- expr;     tok Sym_semi; return $ BlockingAssignment    a b }
   , do { a <- lhs; tok Sym_lt_eq; b <- expr;     tok Sym_semi; return $ NonBlockingAssignment a b }
-  , do { a <- identifier; tok Sym_paren_l; b <- commaList expr; tok Sym_paren_r; tok Sym_semi; return $ Call a b }
-  , do { tok KW_case; tok Sym_paren_l; a <- expr; Sym_paren_r; b <- many case_; c <- optional default_; return $ Case a b c }
+  , do { a <- call; tok Sym_semi; return $ StmtCall a }
+  , do { tok KW_case; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- many case_; c <- optional default_; tok KW_endcase; return $ Case a b c }
   , do { tok Sym_semi; return Null }
+  , do { tok Sym_pound; a <- number; b <- stmt; return $ Delay a b }
   ]
+
+call :: Verilog Call
+call = do { a <- identifier; tok Sym_paren_l; b <- commaList expr; tok Sym_paren_r; return $ Call a b }
 
 case_ :: Verilog Case
 case_ = do { a <- commaList expr; tok Sym_colon; b <- stmt; return (a, b) }
