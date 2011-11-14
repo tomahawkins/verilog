@@ -1,6 +1,5 @@
 module Language.Verilog.Types
   ( Identifier
-  , Range
   , Module     (..)
   , ModuleItem (..)
   , Stmt       (..)
@@ -8,11 +7,10 @@ module Language.Verilog.Types
   , Sense      (..)
   , LHS        (..)
   , Case
+  , Range
   ) where
 
 type Identifier = String
-
-type Range = (Expr, Expr)
 
 data Module = Module Identifier [Identifier] [ModuleItem] deriving (Show, Eq)
 
@@ -68,7 +66,7 @@ data Expr
 data Stmt
   = Block                 (Maybe Identifier) [Stmt]
   | Integer               Identifier
-  | Case                  Expr [Case] Stmt
+  | Case                  Expr [Case] (Maybe Stmt)
   | BlockingAssignment    LHS Expr
   | NonBlockingAssignment LHS Expr
   | For                   (Identifier, Expr) Expr (Identifier, Expr) Stmt
@@ -91,4 +89,6 @@ data LHS
   | LHSBit   Identifier Expr
   | LHSRange Identifier Range
   deriving (Show, Eq)
+
+type Range = (Expr, Expr)
 

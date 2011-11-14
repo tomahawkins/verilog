@@ -61,6 +61,8 @@ tokens :-
   "always"           { tok KW_always     }
   "assign"           { tok KW_assign     }
   "begin"            { tok KW_begin      }
+  "case"             { tok KW_case       }
+  "default"          { tok KW_default    }
   "else"             { tok KW_else       }
   "end"              { tok KW_end        }
   "endmodule"        { tok KW_endmodule  }

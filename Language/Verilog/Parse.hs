@@ -80,7 +80,7 @@ moduleItem = oneOf
   ]
 
 range :: Verilog Range
-range = do { tok Sym_brack_l; a <- expr; tok Sym_colon; b <- expr; tok Sym_brack_r; return (a, b) }
+range = do { tok Sym_brack_l; a <- expr; tok Sym_colon; b <- expr; tok Sym_brack_r; return $ Range a b }
 
 bit :: Verilog Expr
 bit = do { tok Sym_brack_l; a <- expr; tok Sym_brack_r; return a }
@@ -168,8 +168,15 @@ stmt = oneOf
   , do { a <- lhs; tok Sym_eq;    b <- expr;     tok Sym_semi; return $ BlockingAssignment    a b }
   , do { a <- lhs; tok Sym_lt_eq; b <- expr;     tok Sym_semi; return $ NonBlockingAssignment a b }
   , do { a <- identifier; tok Sym_paren_l; b <- commaList expr; tok Sym_paren_r; tok Sym_semi; return $ Call a b }
+  , do { tok KW_case; tok Sym_paren_l; a <- expr; Sym_paren_r; b <- many case_; c <- optional default_; return $ Case a b c }
   , do { tok Sym_semi; return Null }
   ]
+
+case_ :: Verilog Case
+case_ = do { a <- commaList expr; tok Sym_colon; b <- stmt; return (a, b) }
+
+default_ :: Verilog Stmt
+default_ = do { tok KW_default; tok Sym_colon; stmt }
 
 sense :: Verilog Sense
 sense = oneOf
