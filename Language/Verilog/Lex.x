@@ -53,7 +53,7 @@ $decimalDigit = [0-9]
 
 @escapedIdentifier = "\\" ($printable # $white) $white
 @simpleIdentifier  = [a-zA-Z_] [a-zA-Z0-9_\$]*
-@systemIdentifier = "\$" [a-zA-Z0-9_\$] [a-zA-Z0-9_\$]*
+@systemIdentifier = "$" [a-zA-Z0-9_\$] [a-zA-Z0-9_\$]*
 
 
 tokens :-
@@ -61,9 +61,11 @@ tokens :-
   "always"           { tok KW_always     }
   "assign"           { tok KW_assign     }
   "begin"            { tok KW_begin      }
+  "else"             { tok KW_else       }
   "end"              { tok KW_end        }
   "endmodule"        { tok KW_endmodule  }
   "for"              { tok KW_for        }
+  "if"               { tok KW_if         }
   "initial"          { tok KW_initial    }
   "inout"            { tok KW_inout      }
   "input"            { tok KW_input      }

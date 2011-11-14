@@ -1,5 +1,5 @@
 module Language.Verilog.Types
-  ( Name
+  ( Identifier
   , Range
   , Module     (..)
   , ModuleItem (..)
@@ -10,19 +10,27 @@ module Language.Verilog.Types
   , Case
   ) where
 
-type Name = String
+type Identifier = String
 
 type Range = (Expr, Expr)
 
-data Module = Module Name [ModuleItem] deriving (Show, Eq)
+data Module = Module Identifier [Identifier] [ModuleItem] deriving (Show, Eq)
+
+{-
+instance Show Module where
+  show (Module name ports items) = unlines
+    [ "module " ++ name ++ (if null ports then "" else "(" ++ intercalate ", " ports ++ ")") ++ ";"
+    , "endmodule"
+    ]
+-}
 
 data ModuleItem
-  = Paremeter Name Expr
-  | Input     (Maybe Range) [(Name, Maybe Range)]
-  | Output    (Maybe Range) [(Name, Maybe Range)]
-  | Inout     (Maybe Range) [(Name, Maybe Range)]
-  | Wire      (Maybe Range) [(Name, Maybe Range)]
-  | Reg       (Maybe Range) [(Name, Maybe Range)]
+  = Paremeter Identifier Expr
+  | Input     (Maybe Range) [(Identifier, Maybe Range)]
+  | Output    (Maybe Range) [(Identifier, Maybe Range)]
+  | Inout     (Maybe Range) [(Identifier, Maybe Range)]
+  | Wire      (Maybe Range) [(Identifier, Maybe Range)]
+  | Reg       (Maybe Range) [(Identifier, Maybe Range)]
   | Initial    Stmt
   | Always     Sense Stmt
   | Assign     LHS Expr
@@ -31,7 +39,7 @@ data ModuleItem
 data Expr
   = String     String
   | Number     String
-  | Identifier String
+  | ExprLHS    LHS
   | Not        Expr
   | And        Expr Expr
   | Or         Expr Expr
@@ -58,14 +66,14 @@ data Expr
   deriving (Show, Eq)
 
 data Stmt
-  = Block                 (Maybe Name) [Stmt]
-  | Integer               Name
+  = Block                 (Maybe Identifier) [Stmt]
+  | Integer               Identifier
   | Case                  Expr [Case] Stmt
   | BlockingAssignment    LHS Expr
   | NonBlockingAssignment LHS Expr
-  | For                   Stmt Expr Stmt Stmt
+  | For                   (Identifier, Expr) Expr (Identifier, Expr) Stmt
   | If                    Expr Stmt Stmt
-  | Call                  Name [Expr]
+  | Call                  Identifier [Expr]
   | Null
   deriving (Show, Eq)
 
@@ -79,8 +87,8 @@ data Sense
   deriving (Show, Eq)
 
 data LHS
-  = LHS      Name
-  | LHSBit   Name Expr
-  | LHSRange Name Range
+  = LHS      Identifier
+  | LHSBit   Identifier Expr
+  | LHSRange Identifier Range
   deriving (Show, Eq)
 

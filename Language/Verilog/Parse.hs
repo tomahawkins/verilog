@@ -30,14 +30,14 @@ type Verilog = Parser Token
 tok :: TokenInfo -> Verilog ()
 tok a = satisfy (\ (Token t _ _) -> t == a) >> return ()
 
-identifier :: Verilog Name
+identifier :: Verilog Identifier
 identifier = oneOf
   [ satisfy (\ (Token t _ _) -> t == Id_simple ) >>= return . tokenString
   , satisfy (\ (Token t _ _) -> t == Id_escaped) >>= return . tokenString
   , satisfy (\ (Token t _ _) -> t == Id_system ) >>= return . tokenString
   ]
 
-identifiers :: Verilog [Name]
+identifiers :: Verilog [Identifier]
 identifiers = commaList identifier
 
 commaList :: Verilog a -> Verilog [a]
@@ -46,10 +46,10 @@ commaList item = oneOf
   , do { a <- item;                                     return [a]     }
   ]
 
-declaration :: Verilog (Name, Maybe Range)
+declaration :: Verilog (Identifier, Maybe Range)
 declaration = do { a <- identifier; b <- optional range; return (a, b) }
 
-declarations :: Verilog [(Name, Maybe Range)]
+declarations :: Verilog [(Identifier, Maybe Range)]
 declarations = commaList declaration
 
 string :: Verilog String
@@ -62,9 +62,9 @@ modules :: Verilog [Module]
 modules = do { m <- many1 module_; eof; return m }
 
 module_ :: Verilog Module
-module_ = do { tok KW_module; name <- identifier; modulePortList; tok Sym_semi; items <- many1 moduleItem; tok KW_endmodule; return $ Module name items }
+module_ = do { tok KW_module; name <- identifier; ports <- modulePortList; tok Sym_semi; items <- many1 moduleItem; tok KW_endmodule; return $ Module name ports items }
 
-modulePortList :: Verilog [Name]
+modulePortList :: Verilog [Identifier]
 modulePortList = oneOf
   [ do { tok Sym_paren_l; a <- identifiers; tok Sym_paren_r; return a  }
   , do {                                                     return [] }
@@ -85,7 +85,7 @@ range = do { tok Sym_brack_l; a <- expr; tok Sym_colon; b <- expr; tok Sym_brack
 bit :: Verilog Expr
 bit = do { tok Sym_brack_l; a <- expr; tok Sym_brack_r; return a }
 
-net :: Verilog (Maybe Range -> [(Name, Maybe Range)] -> ModuleItem)
+net :: Verilog (Maybe Range -> [(Identifier, Maybe Range)] -> ModuleItem)
 net = oneOf
   [ do { tok KW_input;  return $ Input  }
   , do { tok KW_output; return $ Output }
@@ -148,9 +148,9 @@ chainl1 p op = do { x <- p; rest x }
 
 exprTop :: Verilog Expr
 exprTop = oneOf
-  [ do { a <- string;     return $ String a     }
-  , do { a <- number;     return $ Number a     }
-  , do { a <- identifier; return $ Identifier a }
+  [ do { a <- string;     return $ String  a }
+  , do { a <- number;     return $ Number  a }
+  , do { a <- lhs;        return $ ExprLHS a }
   , do { tok Sym_paren_l; a <- expr; tok Sym_paren_r; return a }
   , do { tok Sym_bang;    a <- expr;                  return $ Not a   }
   , do { tok Sym_tildy;   a <- expr;                  return $ BWNot a }
@@ -161,13 +161,13 @@ exprTop = oneOf
 stmt :: Verilog Stmt
 stmt = oneOf
   [ do { tok KW_begin; a <- optional (tok Sym_colon >> identifier); b <- many stmt; tok KW_end; return $ Block a b }
-  , do { tok KW_for; tok Sym_paren_l; a <- stmt; tok Sym_semi; b <- expr; tok Sym_semi; c <- stmt; tok Sym_paren_r; d <- stmt; return $ For a b c d }
+  , do { tok KW_for; tok Sym_paren_l; a <- identifier; tok Sym_eq; b <- expr; tok Sym_semi; c <- expr; tok Sym_semi; d <- identifier; tok Sym_eq; e <- expr; tok Sym_paren_r; f <- stmt; return $ For (a, b) c (d, e) f }
   , do { tok KW_integer; a <- identifier;        tok Sym_semi; return $ Integer a }
   , do { tok KW_if; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- stmt; tok KW_else; c <- stmt; return $ If a b c    }
   , do { tok KW_if; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- stmt;                         return $ If a b Null }
   , do { a <- lhs; tok Sym_eq;    b <- expr;     tok Sym_semi; return $ BlockingAssignment    a b }
   , do { a <- lhs; tok Sym_lt_eq; b <- expr;     tok Sym_semi; return $ NonBlockingAssignment a b }
-  , do { a <- identifier; tok Sym_paren_l; b <- commaList expr; tok Sym_paren_r; return $ Call a b }
+  , do { a <- identifier; tok Sym_paren_l; b <- commaList expr; tok Sym_paren_r; tok Sym_semi; return $ Call a b }
   , do { tok Sym_semi; return Null }
   ]
 
