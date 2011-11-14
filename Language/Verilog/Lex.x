@@ -12,19 +12,16 @@ import Language.Verilog.Tokens
 
 -- Numbers
 
-$xDigit = [xX]
-$zDigit = [zZ\?]
-
 $nonZeroDecimalDigit = [1-9]
 $decimalDigit = [0-9]
-@binaryDigit  = $xDigit | $zDigit | [0-1]
-@octalDigit   = $xDigit | $zDigit | [0-7]
-@hexDigit     = $xDigit | $zDigit | [0-9a-fA-F]
+@binaryDigit  = [0-1]
+@octalDigit   = [0-7]
+@hexDigit     = [0-9a-fA-F]
 
-@decimalBase = "'" [sS]? [dD]
-@binaryBase  = "'" [sS]? [bB]
-@octalBase   = "'" [sS]? [oO]
-@hexBase     = "'" [sS]? [hH]
+@decimalBase = "'" [dD]
+@binaryBase  = "'" [bB]
+@octalBase   = "'" [oO]
+@hexBase     = "'" [hH]
 
 @binaryValue = @binaryDigit ("_" | @binaryDigit)*
 @octalValue  = @octalDigit  ("_" | @octalDigit)*
@@ -37,18 +34,16 @@ $decimalDigit = [0-9]
 
 @decimalNumber
   = @unsignedNumber
-  | @size? @decimalBase @unsignedNumber
-  | @size? @decimalBase $xDigit "_"*
-  | @size? @decimalBase $zDigit "_"*
+  | @size @decimalBase @unsignedNumber
 
-@binaryNumber = @size? @binaryBase @binaryValue
-@octalNumber  = @size? @octalBase  @octalValue
-@hexNumber    = @size? @hexBase    @hexValue
+@binaryNumber = @size @binaryBase @binaryValue
+@octalNumber  = @size @octalBase  @octalValue
+@hexNumber    = @size @hexBase    @hexValue
   
-$exp  = [eE]
-$sign = [\+\-]
-@realNumber = unsignedNumber "." unsignedNumber | unsignedNumber ( "." unsignedNumber)? exp sign? unsignedNumber
-@number = decimalNumber | octalNumber | binaryNumber | hexNumber | realNumber
+-- $exp  = [eE]
+-- $sign = [\+\-]
+-- @realNumber = unsignedNumber "." unsignedNumber | unsignedNumber ( "." unsignedNumber)? exp sign? unsignedNumber
+@number = @decimalNumber | @octalNumber | @binaryNumber | @hexNumber
 
 -- Strings
 
@@ -86,7 +81,6 @@ tokens :-
   @escapedIdentifier { tok Id_escaped }
   @systemIdentifier  { tok Id_system  }
 
-  @unsignedNumber    { tok Lit_number_unsigned }
   @number            { tok Lit_number }
   @string            { tok Lit_string }
 

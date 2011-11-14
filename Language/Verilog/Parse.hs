@@ -44,7 +44,6 @@ commaList :: Verilog a -> Verilog [a]
 commaList item = oneOf
   [ do { a <- item; tok Sym_comma; b <- commaList item; return $ a : b }
   , do { a <- item;                                     return [a]     }
-  , do {                                                return []      }
   ]
 
 declaration :: Verilog (Name, Maybe Range)
@@ -57,10 +56,7 @@ string :: Verilog String
 string = satisfy (\ (Token t _ _) -> t == Lit_string ) >>= return . tail . init . tokenString
 
 number :: Verilog String
-number = oneOf
-  [ satisfy (\ (Token t _ _) -> t == Lit_number_unsigned) >>= return . tokenString
-  , satisfy (\ (Token t _ _) -> t == Lit_number         ) >>= return . tokenString
-  ]
+number = satisfy (\ (Token t _ _) -> t == Lit_number) >>= return . tokenString
 
 modules :: Verilog [Module]
 modules = do { m <- many1 module_; eof; return m }
@@ -100,26 +96,22 @@ net = oneOf
 
 expr :: Verilog Expr
 expr = oneOf
-  [ do { a <- expr1; tok Sym_question; commit $ do { b <- expr; tok Sym_colon; commit $ do { c <- expr; return $ Mux a b c } } }
+  [ do { a <- expr1; tok Sym_question; b <- expr; tok Sym_colon; c <- expr; return $ Mux a b c }
   , expr1
   ]
   where
   expr1 :: Verilog Expr
-  expr1 = exprBinOp (reverse operators) return
+  expr1 = exprBinOp operators
 
-  exprBinOp :: [[(TokenInfo, Expr -> Expr -> Expr)]] -> (Expr -> Verilog Expr) -> Verilog Expr
-  exprBinOp [] f = exprTop >>= f
-  exprBinOp (ops : rest) f = oneOf
-    [ do { a <- exprBinOp rest return; op <- op; exprBinOp (ops : rest) (op a) >>= f }
-    , exprBinOp rest f
-    ]
-    where
-    op :: Verilog (Expr -> Expr -> Verilog Expr)
-    op = oneOf [ do { tok t; return $ \ a b -> return $ op a b } | (t, op) <- ops ]
+  exprBinOp :: [Verilog (Expr -> Expr -> Expr)] -> Verilog Expr
+  exprBinOp [] = exprTop
+  exprBinOp (op : rest) = chainl1 (exprBinOp rest) op
 
-  -- | Operators with precedence.
-  operators :: [[(TokenInfo, Expr -> Expr -> Expr)]]
-  operators =
+-- | Operators with precedence, low to high.
+operators :: [Verilog (Expr -> Expr -> Expr)]
+operators = reverse [ oneOf [ tok t >> return op | (t, op) <- ops ] | ops <- ops ]
+  where
+  ops =
     [ [(Sym_aster, Mul), (Sym_slash, Div), (Sym_percent, Mod)]
     , [(Sym_plus, Add), (Sym_dash, Sub)]
     , [(Sym_lt_lt, ShiftL), (Sym_gt_gt, ShiftR)]
@@ -131,20 +123,28 @@ expr = oneOf
     , [(Sym_amp_amp, And)]
     , [(Sym_bar_bar, Or)]
     ]
-  
-  -- Verilog operator precedence.
-  --  11  + - ! ~ (unary)
-  --  10  * / %          
-  --   9  + - (binary)   
-  --   8  << >>          
-  --   7  < <= > >=      
-  --   6  == != === !==  
-  --   5  & ~&           
-  --   4  ^ ^~           
-  --   3  | ~|           
-  --   2  &&             
-  --   1  ||             
-  --   0  ?:
+
+-- Verilog operator precedence.
+--  11  + - ! ~ (unary)
+--  10  * / %          
+--   9  + - (binary)   
+--   8  << >>          
+--   7  < <= > >=      
+--   6  == != === !==  
+--   5  & ~&           
+--   4  ^ ^~           
+--   3  | ~|           
+--   2  &&             
+--   1  ||             
+--   0  ?:
+
+chainl1 :: Verilog Expr -> Verilog (Expr -> Expr -> Expr) -> Verilog Expr
+chainl1 p op = do { x <- p; rest x }
+  where
+  rest x = oneOf
+    [ do { f <- op; y <- p; rest $ f x y }
+    , return x
+    ]
 
 exprTop :: Verilog Expr
 exprTop = oneOf
