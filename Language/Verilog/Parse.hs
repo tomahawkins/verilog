@@ -9,6 +9,7 @@ import Language.Verilog.Types
 import Language.Verilog.Lex
 import Language.Verilog.Preprocess
 
+-- | Parses a file given a table of predefined macros, the file name, and the file contents.
 parseFile :: [(String, String)] -> FilePath -> String -> [Module]
 parseFile env file content = case parseTokens tokens of
     Right a -> a

@@ -8,7 +8,6 @@ synopsis: A Verilog parser.
 description:
   This parser supports a very small subset of Verilog-95.
   It is intended primarly for machine generated, synthesizable code.
-  For preprocessing, please use Icarus Verilog (iverilog -E).
 
 author:     Tom Hawkins <tomahawkins@gmail.com>
 maintainer: Tom Hawkins <tomahawkins@gmail.com>
