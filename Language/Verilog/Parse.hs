@@ -180,7 +180,7 @@ stmt = oneOf
   , do { a <- lhs; tok Sym_eq;    b <- expr;     tok Sym_semi; return $ BlockingAssignment    a b }
   , do { a <- lhs; tok Sym_lt_eq; b <- expr;     tok Sym_semi; return $ NonBlockingAssignment a b }
   , do { a <- call; tok Sym_semi; return $ StmtCall a }
-  , do { tok KW_case; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- many case_; c <- optional default_; tok KW_endcase; return $ Case a b c }
+  , do { tok KW_case; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- many case_; c <- default_; tok KW_endcase; return $ Case a b c }
   , do { tok Sym_semi; return Null }
   , do { tok Sym_pound; a <- number; b <- stmt; return $ Delay a b }
   ]
@@ -192,7 +192,10 @@ case_ :: Verilog Case
 case_ = do { a <- commaList expr; tok Sym_colon; b <- stmt; return (a, b) }
 
 default_ :: Verilog Stmt
-default_ = do { tok KW_default; tok Sym_colon; stmt }
+default_ = oneOf
+  [ do { tok KW_default; tok Sym_colon; stmt }
+  , return Null
+  ]
 
 sense :: Verilog Sense
 sense = oneOf
