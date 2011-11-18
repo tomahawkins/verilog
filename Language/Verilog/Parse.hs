@@ -28,7 +28,7 @@ parseTokens tokens = case runParser modules tokens of
 
 type Verilog = Parser Token
 
-tok :: TokenInfo -> Verilog ()
+tok :: TokenName -> Verilog ()
 tok a = satisfy (\ (Token t _ _) -> t == a) >> return ()
 
 identifier :: Verilog Identifier

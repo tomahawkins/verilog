@@ -1,6 +1,6 @@
 module Language.Verilog.Tokens
   ( Token     (..)
-  , TokenInfo (..)
+  , TokenName (..)
   , Position  (..)
   , tokenString
   ) where
@@ -15,9 +15,9 @@ data Position = Position String Int Int deriving Eq
 instance Show Position where
   show (Position f l c) = printf "%s:%d:%d" f l c
 
-data Token = Token TokenInfo String Position deriving (Show, Eq)
+data Token = Token TokenName String Position deriving (Show, Eq)
 
-data TokenInfo
+data TokenName
   = KW_alias 
   | KW_always 
   | KW_always_comb 
@@ -337,10 +337,10 @@ data TokenInfo
   deriving (Show, Eq)
 
 {-
-keywordOrId :: String -> TokenInfo
+keywordOrId :: String -> TokenName
 keywordOrId s = findWithDefault Id_simple s keywords
 
-keywords :: Map String TokenInfo
+keywords :: Map String TokenName
 keywords = fromList
   [ ("alias", KW_alias)
   , ("always", KW_always)

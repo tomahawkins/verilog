@@ -181,7 +181,7 @@ tokens :-
   .                  { tok Unknown }
 
 {
-tok :: TokenInfo -> AlexPosn -> String -> Token
+tok :: TokenName -> AlexPosn -> String -> Token
 tok t (AlexPn _ l c) s = Token t s $ Position "" l c
 }
 
