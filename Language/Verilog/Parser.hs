@@ -98,11 +98,11 @@ bit = do { tok Sym_brack_l; a <- expr; tok Sym_brack_r; return a }
 
 net :: Verilog (Maybe Range -> [(Identifier, Maybe Range)] -> ModuleItem)
 net = oneOf
-  [ do { tok KW_input;  return $ Input  }
-  , do { tok KW_output; return $ Output }
-  , do { tok KW_inout;  return $ Inout  }
-  , do { tok KW_wire;   return $ Wire   }
-  , do { tok KW_reg;    return $ Reg    }
+  [ do { tok KW_input;   return $ Input   }
+  , do { tok KW_output;  return $ Output  }
+  , do { tok KW_inout;   return $ Inout   }
+  , do { tok KW_wire;    return $ Wire    }
+  , do { tok KW_reg;     return $ Reg     }
   ]
 
 expr :: Verilog Expr
