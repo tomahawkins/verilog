@@ -1,4 +1,4 @@
-module Language.Verilog.Preprocess
+module Language.Verilog.Parser.Preprocess
   ( uncomment
   , preprocess
   ) where

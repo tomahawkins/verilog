@@ -3,11 +3,11 @@ version: 0.0.3
 
 category: Language, Hardware
 
-synopsis: A Verilog parser.
+synopsis: A Verilog parser and simulator.
 
 description:
-  This parser supports a very small subset of Verilog-95.
-  It is intended primarly for machine generated, synthesizable code.
+  A parser and simulator supporting a very small subset of Verilog-95.
+  Intended for machine generated, synthesizable code.
 
 author:     Tom Hawkins <tomahawkins@gmail.com>
 maintainer: Tom Hawkins <tomahawkins@gmail.com>
@@ -18,27 +18,29 @@ license-file: LICENSE
 homepage: http://github.com/tomahawkins/verilog
 
 build-type:    Simple
-cabal-version: >= 1.6
+cabal-version: >= 1.8
 
 library
-    build-depends:
-        base       >= 4.0     && < 5,
-        array,
-        polyparse
+  build-depends:
+    base       >= 4.0   && < 5.0,
+    array      >= 0.4   && < 5.0,
+    polyparse  >= 1.4   && < 2.0,
+    vcd        >= 0.2.2 && < 0.3
 
-    exposed-modules:
-        Language.Verilog
-        Language.Verilog.Tokens
-        Language.Verilog.Types
-        Language.Verilog.Lex
-        Language.Verilog.Parse
-        Language.Verilog.Preprocess
+  exposed-modules:
+    Language.Verilog
+    Language.Verilog.AST
+    Language.Verilog.Parser
+    Language.Verilog.Parser.Lex
+    Language.Verilog.Parser.Preprocess
+    Language.Verilog.Parser.Tokens
+    Language.Verilog.Simulator
 
-    extensions:
+  extensions:
 
-    ghc-options: -W
+  ghc-options: -W
 
 source-repository head
-    type:     git
-    location: git://github.com/tomahawkins/verilog.git
+  type:     git
+  location: git://github.com/tomahawkins/verilog.git
 

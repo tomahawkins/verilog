@@ -1,4 +1,4 @@
-module Language.Verilog.Tokens
+module Language.Verilog.Parser.Tokens
   ( Token     (..)
   , TokenName (..)
   , Position  (..)

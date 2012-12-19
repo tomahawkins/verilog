@@ -1,9 +1,11 @@
--- | A parser for the Verilog hardware description language.
+-- | A parser and simulator for the Verilog hardware description language.
 module Language.Verilog
-  ( module Language.Verilog.Parse
-  , module Language.Verilog.Types
+  ( module Language.Verilog.AST
+  , module Language.Verilog.Parser
+  , module Language.Verilog.Simulator
   ) where
 
-import Language.Verilog.Parse
-import Language.Verilog.Types
+import Language.Verilog.AST
+import Language.Verilog.Parser
+import Language.Verilog.Simulator
 
