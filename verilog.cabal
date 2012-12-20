@@ -24,6 +24,7 @@ library
   build-depends:
     base       >= 4.0   && < 5.0,
     array      >= 0.4   && < 5.0,
+    mtl        >= 2.0   && < 3.0,
     polyparse  >= 1.4   && < 2.0,
     vcd        >= 0.2.2 && < 0.3
 
