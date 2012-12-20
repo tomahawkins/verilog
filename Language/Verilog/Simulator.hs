@@ -69,9 +69,10 @@ compileModuleItem a = case a of
       Combinational -> compileCombStmt stmt
       Posedge       -> compileSeqStmt  stmt
       Negedge       -> warning "negedge always block ignored."
-  {-
-  Assign     LHS Expr
-  -}
+
+  Assign (LHS v) a -> return () --XXX
+  Assign l       _ -> error' $ "Unsupported assignment LHS: " ++ show l
+
   Instance mName parameters iName bindings -> do
     c <- get 
     case lookupModule mName $ modules c of
@@ -104,14 +105,28 @@ checkSense sense = case sense of
   _ -> invalid
   where
   invalid = do
-    error' $ "Invalid sense: " ++ show sense
+    error' $ "Unsupported sense: " ++ show sense
     return Combinational
 
 compileCombStmt :: Stmt -> VC ()
-compileCombStmt stmt = return () --XXX
+compileCombStmt = compileStmt --XXX
 
 compileSeqStmt :: Stmt -> VC ()
-compileSeqStmt stmt = return () --XXX
+compileSeqStmt = compileStmt --XXX
+
+compileStmt :: Stmt -> VC ()
+compileStmt stmt = case stmt of
+  Block Nothing stmts -> mapM_ compileStmt stmts
+  Block (Just b) stmts -> do
+    modify $ \ c -> c { path = path c ++ [b] }
+    mapM_ compileStmt stmts
+    modify $ \ c -> c { path = init $ path c }
+  Case                  a b c -> mapM_ compileStmt $ (snd $ unzip b) ++ [c]  --XXX Not correct.
+  BlockingAssignment    (LHS _) _ -> return () --XXX
+  NonBlockingAssignment (LHS _) _ -> return () --XXX
+  If                    a b c -> mapM_ compileStmt [b, c] --XXX Not correct.
+  Null -> return ()
+  _ -> error' $ "Unsupported statement: " ++ show stmt
 
 warning :: String -> VC ()
 warning msg = do
@@ -124,7 +139,7 @@ error' :: String -> VC ()
 error' msg = do
   c <- get
   liftIO $ do
-    printf "ERROR (module: %s) (instance: %s) : %s\n" (moduleName c) (intercalate "." $ path c) msg
+    printf "ERROR   (module: %s) (instance: %s) : %s\n" (moduleName c) (intercalate "." $ path c) msg
     hFlush stdout
   put c { hitError = True }
 

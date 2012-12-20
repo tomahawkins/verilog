@@ -155,7 +155,7 @@ instance Show Stmt where
     Integer               a                 -> printf "integer %s;" a
     Case                  a b c             -> printf "case (%s)\n%s\n\tdefault:\n%s\nendcase" (show a) (indent $ unlines' $ map showCase b) (indent $ indent $ show c)
     BlockingAssignment    a b               -> printf "%s = %s;" (show a) (show b)
-    NonBlockingAssignment a b               -> printf "%s = %s;" (show a) (show b)
+    NonBlockingAssignment a b               -> printf "%s <= %s;" (show a) (show b)
     For                   (a, b) c (d, e) f -> printf "for (%s = %s; %s; %s = %s)\n%s" a (show b) (show c) d (show e) $ indent $ show f
     If                    a b Null          -> printf "if (%s)\n%s"           (show a) (indent $ show b)
     If                    a b c             -> printf "if (%s)\n%s\nelse\n%s" (show a) (indent $ show b) (indent $ show c)
