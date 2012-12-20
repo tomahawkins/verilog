@@ -27,7 +27,7 @@ instance Show Module where
     ]
 
 data ModuleItem
-  = Paremeter (Maybe Range) Identifier Expr
+  = Parameter (Maybe Range) Identifier Expr
   | Input     (Maybe Range) [(Identifier, Maybe Range)]
   | Output    (Maybe Range) [(Identifier, Maybe Range)]
   | Inout     (Maybe Range) [(Identifier, Maybe Range)]
@@ -41,7 +41,7 @@ data ModuleItem
 
 instance Show ModuleItem where
   show a = case a of
-    Paremeter r n e -> printf "parameter %s%s = %s;" (showRange r) n (show e)
+    Parameter r n e -> printf "parameter %s%s = %s;" (showRange r) n (show e)
     Input     r a   -> printf "input  %s%s;" (showRange r) (commas [ a ++ showRange r | (a, r) <- a ])
     Output    r a   -> printf "output %s%s;" (showRange r) (commas [ a ++ showRange r | (a, r) <- a ])
     Inout     r a   -> printf "inout  %s%s;" (showRange r) (commas [ a ++ showRange r | (a, r) <- a ])
@@ -75,6 +75,7 @@ unlines' = intercalate "\n"
 data Expr
   = String     String
   | Number     String
+  | ConstBool  Bool
   | ExprLHS    LHS
   | ExprCall   Call
   | Not        Expr
@@ -106,6 +107,7 @@ instance Show Expr where
   show a = case a of
     String     a -> printf "\"%s\"" a
     Number     a -> a
+    ConstBool  a -> printf "1'b%s" (if a then "1" else "0")
     ExprLHS    a -> show a
     ExprCall   a -> show a
     Not        a -> printf "(! %s)" $ show a

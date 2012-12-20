@@ -35,11 +35,11 @@ lookupModule name modules = case [ m | m@(Module n _ _ ) <- modules, name == n ]
 
 
 data CompilerState = CompilerState
-  { nextVar     :: Int
+  { nextId      :: Int
   , modules     :: [Module]
   , path        :: Path
   , moduleName  :: Identifier
-  , assigns     :: [Assignment]
+  , _assigns     :: [Assignment]
   , environment :: [(Identifier, Var)]
   , hitError    :: Bool
   , clock       :: Identifier
@@ -48,21 +48,36 @@ data CompilerState = CompilerState
 type VC = StateT CompilerState IO
 
 compileModule :: Module -> VC ()
-compileModule (Module name _ items) = mapM_ compileModuleItem items
+compileModule (Module _ _ items) = mapM_ compileModuleItem items
+
+extendEnv :: Int -> Identifier -> VC ()
+extendEnv width name = do
+  c <- get
+  put c { nextId = nextId c + 1, environment = (name, Var (nextId c) width [path c ++ [name]]) : environment c }
+
+extendEnv' :: Maybe Range -> [(Identifier, Maybe Range)] -> VC ()
+extendEnv' range vars = case range of
+  Nothing                       -> mapM_ (f 1)         vars
+  Just (Number msb, Number "0") -> mapM_ (f $ num msb) vars
+  Just r -> error' $ "Invalid range in variable declaration: " ++ show r
+  where
+  num :: String -> Int
+  num = read  -- XXX This will fail on 'h format.
+  f :: Int -> (Identifier, Maybe Range) -> VC ()
+  f width (var, array) = case array of
+    Nothing -> extendEnv width var
+    Just _  -> error' $ "Arrays not supported: " ++ var
 
 compileModuleItem :: ModuleItem -> VC ()
 compileModuleItem a = case a of
-  {-
-  Paremeter (Maybe Range) Identifier Expr
-  Input     (Maybe Range) [(Identifier, Maybe Range)]
-  Output    (Maybe Range) [(Identifier, Maybe Range)]
-  -}
-  Inout     _ _ -> error' "inout not supported."
-  {-
-  Wire      (Maybe Range) [(Identifier, Maybe Range)]
-  Reg       (Maybe Range) [(Identifier, Maybe Range)]
-  -}
-  Initial    _ -> warning "initial statement ignored."
+  Parameter _ _ _ -> return ()  --XXX If parameter is present in environment, check width.  If not, add to environment.
+  Inout   _ _ -> error' "inout not supported."
+  Input  range vars -> extendEnv' range vars
+  Output range vars -> extendEnv' range vars
+  Wire   range vars -> extendEnv' range vars
+  Reg    range vars -> extendEnv' range vars
+
+  Initial _ -> warning "initial statement ignored."
   Always     sense stmt -> do
     s <- checkSense sense
     case s of
@@ -70,22 +85,21 @@ compileModuleItem a = case a of
       Posedge       -> compileSeqStmt  stmt
       Negedge       -> warning "negedge always block ignored."
 
-  Assign (LHS v) a -> return () --XXX
+  Assign (LHS _) _ -> return () --XXX
   Assign l       _ -> error' $ "Unsupported assignment LHS: " ++ show l
 
-  Instance mName parameters iName bindings -> do
+  Instance mName _parameters iName _bindings -> do
     c <- get 
     case lookupModule mName $ modules c of
       Nothing -> return () --XXX Need to handle externals.
       Just m -> do
         c0 <- get
-        put c0 { moduleName = mName, path = path c0 ++ [iName] }
+        put c0 { moduleName = mName, path = path c0 ++ [iName], environment = [] }
+        --XXX Insert parameters into environment.
         compileModule m
+        --XXX Do bindings after module elaboration.
         c1 <- get
-        put c1 { moduleName = moduleName c0, path = path c0 }
-  _ -> return ()
-  where
-  cmi = compileModuleItem
+        put c1 { moduleName = moduleName c0, path = path c0, environment = environment c0 }
 
 data SenseType = Combinational | Posedge | Negedge
 
@@ -109,24 +123,36 @@ checkSense sense = case sense of
     return Combinational
 
 compileCombStmt :: Stmt -> VC ()
-compileCombStmt = compileStmt --XXX
+compileCombStmt = compileStmt False Nothing
 
 compileSeqStmt :: Stmt -> VC ()
-compileSeqStmt = compileStmt --XXX
+compileSeqStmt = compileStmt True Nothing
 
-compileStmt :: Stmt -> VC ()
-compileStmt stmt = case stmt of
-  Block Nothing stmts -> mapM_ compileStmt stmts
-  Block (Just b) stmts -> do
-    modify $ \ c -> c { path = path c ++ [b] }
-    mapM_ compileStmt stmts
-    modify $ \ c -> c { path = init $ path c }
-  Case                  a b c -> mapM_ compileStmt $ (snd $ unzip b) ++ [c]  --XXX Not correct.
-  BlockingAssignment    (LHS _) _ -> return () --XXX
-  NonBlockingAssignment (LHS _) _ -> return () --XXX
-  If                    a b c -> mapM_ compileStmt [b, c] --XXX Not correct.
+compileStmt :: Bool -> (Maybe Expr) -> Stmt -> VC ()
+compileStmt seq guard stmt = case stmt of
+
+  Block _ stmts -> mapM_ (compileStmt seq guard) stmts
+
+  Case scrutee cases def -> compileStmt seq guard $ f cases
+    where
+    f :: [([Expr], Stmt)] -> Stmt  -- Convert case to an if statement.
+    f a = case a of
+      [] -> def
+      (values, stmt) : rest -> If (foldl1 Or [ Eq value scrutee | value <- values ]) stmt $ f rest
+
+  BlockingAssignment    (LHS _) _ | not seq -> return () --XXX
+  NonBlockingAssignment (LHS _) _ | seq     -> return () --XXX
+
+  If pred onTrue onFalse -> do
+    compileStmt seq (Just       guard') onTrue
+    compileStmt seq (Just $ Not guard') onFalse
+    where
+    guard' = case guard of
+      Nothing -> pred
+      Just a  -> And a pred
+
   Null -> return ()
-  _ -> error' $ "Unsupported statement: " ++ show stmt
+  _ -> error' $ printf "Unsupported statement in %s always block: %s" (if seq then "sequential" else "combinational") (show stmt)
 
 warning :: String -> VC ()
 warning msg = do
@@ -152,7 +178,7 @@ data Assignment
   | AssignReg Var AExpr
   | AssignMem Var AExpr AExpr
 
-data Var = Var Int Int (Maybe Int) [Path]  -- ^ Uid, width, array length, path list of all signals tied together.
+data Var = Var Int Int [Path]  -- ^ Uid, width, path list of all signals tied together.
 
 data AExpr
   = AConst      Int Integer  -- ^ Width, value.

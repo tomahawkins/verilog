@@ -70,7 +70,7 @@ modulePortList = oneOf
 
 moduleItem :: Verilog ModuleItem
 moduleItem = oneOf
-  [ do { tok KW_parameter; commit $ do { a <- optional range; b <- identifier; tok Sym_eq; c <- expr; tok Sym_semi; return $ Paremeter a b c } }
+  [ do { tok KW_parameter; commit $ do { a <- optional range; b <- identifier; tok Sym_eq; c <- expr; tok Sym_semi; return $ Parameter a b c } }
   , do { a <- net;         commit $ do { b <- optional range; c <- declarations; tok Sym_semi; return $ a b c         } }
   , do { tok KW_assign;    commit $ do { a <- lhs; tok Sym_eq; b <- expr;        tok Sym_semi; return $ Assign a b    } }
   , do { tok KW_initial;   commit $ do { a <- stmt;                                                           return $ Initial a    } }
