@@ -39,7 +39,7 @@ data CompilerState = CompilerState
   , modules     :: [Module]
   , path        :: Path
   , moduleName  :: Identifier
-  , _assigns     :: [Assignment]
+  , assignments :: [Assignment]
   , environment :: [(Identifier, Var)]
   , hitError    :: Bool
   , clock       :: Identifier
@@ -68,9 +68,42 @@ extendEnv' range vars = case range of
     Nothing -> extendEnv width var
     Just _  -> error' $ "Arrays not supported: " ++ var
 
+getVar :: Identifier -> VC Var
+getVar a = do
+  c <- get
+  case lookup a $ environment c of
+    Nothing -> do
+      error' $ "Variable not found: " ++ a
+      return $ Var 0 0 []
+    Just a -> return a
+
+inEnv :: Identifier -> VC Bool
+inEnv a = do
+  c <- get
+  return $ elem a $ fst $ unzip $ environment c
+
+assignVar :: (Identifier, Expr) -> VC ()
+assignVar (v, e) = do
+  c <- get
+  v <- getVar v
+  e <- compileExpr e
+  put c { assignments = assignments c ++ [AssignVar v e] }
+
+assignReg :: (Identifier, Expr) -> VC ()
+assignReg (v, e) = do
+  c <- get
+  v <- getVar v
+  e <- compileExpr e
+  put c { assignments = assignments c ++ [AssignReg v e] }
+
 compileModuleItem :: ModuleItem -> VC ()
 compileModuleItem a = case a of
-  Parameter _ _ _ -> return ()  --XXX If parameter is present in environment, check width.  If not, add to environment.
+  Parameter range var expr -> do
+    inEnv <- inEnv var
+    when (not inEnv) $ do
+      extendEnv' range [(var, Nothing)]
+      assignVar (var, expr)
+    
   Inout   _ _ -> error' "inout not supported."
   Input  range vars -> extendEnv' range vars
   Output range vars -> extendEnv' range vars
@@ -85,19 +118,19 @@ compileModuleItem a = case a of
       Posedge       -> compileSeqStmt  stmt
       Negedge       -> warning "negedge always block ignored."
 
-  Assign (LHS _) _ -> return () --XXX
+  Assign (LHS v) e -> assignVar (v, e)
   Assign l       _ -> error' $ "Unsupported assignment LHS: " ++ show l
 
-  Instance mName _parameters iName _bindings -> do
+  Instance mName parameters iName _bindings -> do
     c <- get 
     case lookupModule mName $ modules c of
       Nothing -> return () --XXX Need to handle externals.
       Just m -> do
         c0 <- get
         put c0 { moduleName = mName, path = path c0 ++ [iName], environment = [] }
-        --XXX Insert parameters into environment.
+        sequence_ [ extendEnv undefined param >> assignVar (param, value) | (param, Just value) <- parameters ]  --XXX How to handle unknown parameter width?
         compileModule m
-        --XXX Do bindings after module elaboration.
+        --XXX Do bindings after module elaboration.  How to determine direction?
         c1 <- get
         put c1 { moduleName = moduleName c0, path = path c0, environment = environment c0 }
 
@@ -123,36 +156,80 @@ checkSense sense = case sense of
     return Combinational
 
 compileCombStmt :: Stmt -> VC ()
-compileCombStmt = compileStmt False Nothing
+compileCombStmt a = compileStmt False a >>= mapM_ assignVar
 
 compileSeqStmt :: Stmt -> VC ()
-compileSeqStmt = compileStmt True Nothing
+compileSeqStmt a = compileStmt True a >>= mapM_ assignReg
 
-compileStmt :: Bool -> (Maybe Expr) -> Stmt -> VC ()
-compileStmt seq guard stmt = case stmt of
+compileStmt :: Bool -> Stmt -> VC [(Identifier, Expr)]
+compileStmt seq stmt = case stmt of
 
-  Block _ stmts -> mapM_ (compileStmt seq guard) stmts
+  Block _ stmts -> mapM (compileStmt seq) stmts >>= return . concat
 
-  Case scrutee cases def -> compileStmt seq guard $ f cases
+  Case scrutee cases def -> compileStmt seq $ f cases
     where
-    f :: [([Expr], Stmt)] -> Stmt  -- Convert case to an if statement.
+    f :: [([Expr], Stmt)] -> Stmt
     f a = case a of
       [] -> def
       (values, stmt) : rest -> If (foldl1 Or [ Eq value scrutee | value <- values ]) stmt $ f rest
 
-  BlockingAssignment    (LHS _) _ | not seq -> return () --XXX
-  NonBlockingAssignment (LHS _) _ | seq     -> return () --XXX
+  BlockingAssignment    (LHS v) e | not seq -> return [(v, e)]
+  NonBlockingAssignment (LHS v) e | seq     -> return [(v, e)]
 
-  If pred onTrue onFalse -> do
-    compileStmt seq (Just       guard') onTrue
-    compileStmt seq (Just $ Not guard') onFalse
+  If pred onTrue onFalse -> do  --XXX How to handle empty, but unreachable branches?  Bluespec code is filled with them.
+    t <- compileStmt seq onTrue
+    f <- compileStmt seq onFalse
+    mapM (merge t f) $ nub $ fst $ unzip $ t ++ f
     where
-    guard' = case guard of
-      Nothing -> pred
-      Just a  -> And a pred
+    merge :: [(Identifier, Expr)] -> [(Identifier, Expr)] -> Identifier -> VC (Identifier, Expr)
+    merge t f v = case (lookup v t, lookup v f) of
+      (Just a , Just b )       -> return (v, Mux pred a                 b                )
+      (Just a , Nothing) | seq -> return (v, Mux pred a                 (ExprLHS $ LHS v))
+      (Nothing, Just b ) | seq -> return (v, Mux pred (ExprLHS $ LHS v) b                )
+      _ -> do
+        error' $ printf "Invalid branch in %s always block regarding variable %s." (if seq then "sequential" else "combinational") v
+        return (v, Number "0")
 
-  Null -> return ()
-  _ -> error' $ printf "Unsupported statement in %s always block: %s" (if seq then "sequential" else "combinational") (show stmt)
+  Null -> return []
+  _ -> do
+    error' $ printf "Unsupported statement in %s always block: %s" (if seq then "sequential" else "combinational") (show stmt)
+    return []
+
+compileExpr :: Expr -> VC AExpr
+compileExpr expr = case expr of
+  {-
+  String     String
+  Number     String
+  ConstBool  Bool
+  ExprLHS    LHS
+  ExprCall   Call
+  Not        Expr
+  And        Expr Expr
+  Or         Expr Expr
+  BWNot      Expr
+  BWAnd      Expr Expr
+  BWXor      Expr Expr
+  BWOr       Expr Expr
+  Mul        Expr Expr
+  Div        Expr Expr
+  Mod        Expr Expr
+  Add        Expr Expr
+  Sub        Expr Expr
+  ShiftL     Expr Expr
+  ShiftR     Expr Expr
+  Eq         Expr Expr
+  Ne         Expr Expr
+  Lt         Expr Expr
+  Le         Expr Expr
+  Gt         Expr Expr
+  Ge         Expr Expr
+  Mux        Expr Expr Expr
+  Repeat     Expr [Expr]
+  Concat     [Expr]
+  -}
+  _ -> do
+    --error' $ "Unsupported expression: " ++ show expr
+    return $ AConst 0 0
 
 warning :: String -> VC ()
 warning msg = do
