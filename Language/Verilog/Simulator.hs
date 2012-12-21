@@ -19,7 +19,7 @@ import Language.Verilog.AST
 -- | Simulation given the top level module name, a list of modules, and a test bench function.
 simulate :: [Module] -> Identifier -> Identifier -> IO ()
 simulate modules top clock = do
-  cs <- execStateT (compileModule topModule) (CompilerState 0 modules [top] top [] [] False clock)
+  cs <- execStateT (compileModule topModule) (CompilerState 0 modules [top] top [] [] False $ Just clock)
   when (hitError cs) exitFailure
   return ()
   where
@@ -42,7 +42,7 @@ data CompilerState = CompilerState
   , assignments :: [Assignment]
   , environment :: [(Identifier, Var)]
   , hitError    :: Bool
-  , clock       :: Identifier
+  , clock       :: Maybe Identifier
   }
 
 type VC = StateT CompilerState IO
@@ -53,7 +53,8 @@ compileModule (Module _ _ items) = mapM_ compileModuleItem items
 extendEnv :: Int -> Identifier -> VC ()
 extendEnv width name = do
   c <- get
-  put c { nextId = nextId c + 1, environment = (name, Var (nextId c) width [path c ++ [name]]) : environment c }
+  when (clock c /= Just name) $ do
+    put c { nextId = nextId c + 1, environment = (name, Var (nextId c) width [path c ++ [name]]) : environment c }
 
 extendEnv' :: Maybe Range -> [(Identifier, Maybe Range)] -> VC ()
 extendEnv' range vars = case range of
@@ -121,18 +122,25 @@ compileModuleItem a = case a of
   Assign (LHS v) e -> assignVar (v, e)
   Assign l       _ -> error' $ "Unsupported assignment LHS: " ++ show l
 
-  Instance mName parameters iName _bindings -> do
+  Instance mName parameters iName bindings -> do
     c <- get 
     case lookupModule mName $ modules c of
       Nothing -> return () --XXX Need to handle externals.
       Just m -> do
         c0 <- get
-        put c0 { moduleName = mName, path = path c0 ++ [iName], environment = [] }
+        put c0 { moduleName = mName, path = path c0 ++ [iName], environment = [], clock = subClock c0 }
         sequence_ [ extendEnv undefined param >> assignVar (param, value) | (param, Just value) <- parameters ]  --XXX How to handle unknown parameter width?
         compileModule m
         --XXX Do bindings after module elaboration.  How to determine direction?
         c1 <- get
-        put c1 { moduleName = moduleName c0, path = path c0, environment = environment c0 }
+        put c1 { moduleName = moduleName c0, path = path c0, environment = environment c0, clock = clock c0 }
+    where
+    subClock :: CompilerState -> Maybe Identifier
+    subClock c = case clock c of
+      Nothing  -> Nothing
+      Just clk -> case [ newClock | (var, Just newClock) <- bindings, var == clk ] of
+        [c] -> Just c
+        _ -> Nothing
 
 data SenseType = Combinational | Posedge | Negedge
 
@@ -147,7 +155,7 @@ checkSense sense = case sense of
       _ -> invalid
   SensePosedge (LHS a) -> do
     c <- get
-    if a == clock c then return Posedge else invalid
+    if Just a == clock c then return Posedge else invalid
   SenseNegedge _ -> return Negedge
   _ -> invalid
   where
