@@ -14,7 +14,8 @@ import Text.Printf
 
 import Data.VCD ()
 
-import Language.Verilog.AST
+import Language.Verilog.AST hiding (Var)
+import qualified Language.Verilog.AST as A
 
 -- | Simulation given the top level module name, a list of modules, and a test bench function.
 simulate :: [Module] -> Identifier -> Identifier -> IO ()
@@ -59,7 +60,7 @@ extendEnv width name = do
 extendEnv' :: Maybe Range -> [(Identifier, Maybe Range)] -> VC ()
 extendEnv' range vars = case range of
   Nothing                       -> mapM_ (f 1)         vars
-  Just (Number msb, Number "0") -> mapM_ (f $ num msb) vars
+  Just (Lit (Number msb), Lit (Number "0")) -> mapM_ (f $ num msb) vars
   Just r -> error' $ "Invalid range in variable declaration: " ++ show r
   where
   num :: String -> Int
@@ -119,8 +120,7 @@ compileModuleItem a = case a of
       Posedge       -> compileSeqStmt  stmt
       Negedge       -> warning "negedge always block ignored."
 
-  Assign (LHS v) e -> assignVar (v, e)
-  Assign l       _ -> error' $ "Unsupported assignment LHS: " ++ show l
+  Assign v e -> assignVar (v, e)
 
   Instance mName parameters iName bindings -> do
     c <- get 
@@ -139,7 +139,7 @@ compileModuleItem a = case a of
     subClock c = case clock c of
       Nothing  -> Nothing
       Just clk -> case [ newClock | (var, Just newClock) <- bindings, var == clk ] of
-        [c] -> Just c
+        [A.Var c] -> Just c
         _ -> Nothing
 
 data SenseType = Combinational | Posedge | Negedge
@@ -153,11 +153,10 @@ checkSense sense = case sense of
     case (a, b) of
       (Combinational, Combinational) -> return Combinational
       _ -> invalid
-  SensePosedge (LHS a) -> do
+  SensePosedge a -> do
     c <- get
     if Just a == clock c then return Posedge else invalid
   SenseNegedge _ -> return Negedge
-  _ -> invalid
   where
   invalid = do
     error' $ "Unsupported sense: " ++ show sense
@@ -181,8 +180,8 @@ compileStmt seq stmt = case stmt of
       [] -> def
       (values, stmt) : rest -> If (foldl1 Or [ Eq value scrutee | value <- values ]) stmt $ f rest
 
-  BlockingAssignment    (LHS v) e | not seq -> return [(v, e)]
-  NonBlockingAssignment (LHS v) e | seq     -> return [(v, e)]
+  BlockingAssignment    v e | not seq -> return [(v, e)]
+  NonBlockingAssignment v e | seq     -> return [(v, e)]
 
   If pred onTrue onFalse -> do  --XXX How to handle empty, but unreachable branches?  Bluespec code is filled with them.
     t <- compileStmt seq onTrue
@@ -191,12 +190,12 @@ compileStmt seq stmt = case stmt of
     where
     merge :: [(Identifier, Expr)] -> [(Identifier, Expr)] -> Identifier -> VC (Identifier, Expr)
     merge t f v = case (lookup v t, lookup v f) of
-      (Just a , Just b )       -> return (v, Mux pred a                 b                )
-      (Just a , Nothing) | seq -> return (v, Mux pred a                 (ExprLHS $ LHS v))
-      (Nothing, Just b ) | seq -> return (v, Mux pred (ExprLHS $ LHS v) b                )
+      (Just a , Just b )       -> return (v, Mux pred a       b      )
+      (Just a , Nothing) | seq -> return (v, Mux pred a       (A.Var v))
+      (Nothing, Just b ) | seq -> return (v, Mux pred (A.Var v) b      )
       _ -> do
         error' $ printf "Invalid branch in %s always block regarding variable %s." (if seq then "sequential" else "combinational") v
-        return (v, Number "0")
+        return (v, Lit $ Number "0")
 
   Null -> return []
   _ -> do
@@ -210,6 +209,9 @@ compileExpr expr = case expr of
   Number     String
   ConstBool  Bool
   ExprLHS    LHS
+  Var
+  VarBit
+  VarRange
   ExprCall   Call
   Not        Expr
   And        Expr Expr
