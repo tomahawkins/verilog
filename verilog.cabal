@@ -36,6 +36,7 @@ library
     Language.Verilog.Parser.Preprocess
     Language.Verilog.Parser.Tokens
     Language.Verilog.Simulator
+    Language.Verilog.Simulator.ANF
 
   extensions:
 
