@@ -72,7 +72,7 @@ moduleItem :: Verilog ModuleItem
 moduleItem = oneOf
   [ do { tok KW_parameter; commit $ do { a <- optional range; b <- identifier; tok Sym_eq; c <- expr; tok Sym_semi; return $ Parameter a b c } }
   , do { a <- net;         commit $ do { b <- optional range; c <- declarations; tok Sym_semi; return $ a b c         } }
-  , do { tok KW_assign;    commit $ do { a <- identifier; tok Sym_eq; b <- expr;        tok Sym_semi; return $ Assign a b    } }
+  , do { tok KW_assign;    commit $ do { a <- lhs; tok Sym_eq; b <- expr;        tok Sym_semi; return $ Assign a b    } }
   , do { tok KW_initial;   commit $ do { a <- stmt;                                                           return $ Initial a    } }
   , do { tok KW_always;    commit $ do { tok Sym_at; tok Sym_paren_l; a <- sense; tok Sym_paren_r; b <- stmt; return $ Always a b   } }
   , do { a <- identifier; b <- parameterBindings; c <- identifier; d <- signalBindings; tok Sym_semi; return $ Instance a b c d }
@@ -80,7 +80,7 @@ moduleItem = oneOf
 
 parameterBindings :: Verilog [(Identifier, Maybe Expr)]
 parameterBindings = oneOf
-  [ do { tok Sym_pound; a <- signalBindings; return a }
+  [ do { tok Sym_pound; signalBindings }
   , return []
   ]
 
@@ -157,19 +157,12 @@ chainl1 p op = do { x <- p; rest x }
     , return x
     ]
 
-lit :: Verilog Lit
-lit = oneOf
-  [ do { a <- string; return $ String a }
-  , do { a <- number; return $ Number a }
-  ]
-
 exprTop :: Verilog Expr
 exprTop = oneOf
-  [ do { a <- call; return $ ExprCall a }
-  , do { a <- lit;  return $ Lit      a }
-  , do { a <- identifier; b <- range; return $ VarRange a b }
-  , do { a <- identifier; b <- bit;   return $ VarBit   a b }
-  , do { a <- identifier;             return $ Var      a   }
+  [ do { a <- call;       return $ ExprCall a }
+  , do { a <- string;     return $ String   a }
+  , do { a <- number;     return $ Number   a }
+  , do { a <- lhs;        return $ ExprLHS  a }
   , do { tok Sym_paren_l; a <- expr; tok Sym_paren_r; return a }
   , do { tok Sym_bang;    a <- expr;                  return $ Not a   }
   , do { tok Sym_tildy;   a <- expr;                  return $ BWNot a }
@@ -184,8 +177,8 @@ stmt = oneOf
   , do { tok KW_integer; a <- identifier;        tok Sym_semi; return $ Integer a }
   , do { tok KW_if; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- stmt; tok KW_else; c <- stmt; return $ If a b c    }
   , do { tok KW_if; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- stmt;                         return $ If a b Null }
-  , do { a <- identifier; tok Sym_eq;    b <- expr;     tok Sym_semi; return $ BlockingAssignment    a b }
-  , do { a <- identifier; tok Sym_lt_eq; b <- expr;     tok Sym_semi; return $ NonBlockingAssignment a b }
+  , do { a <- lhs; tok Sym_eq;    b <- expr;     tok Sym_semi; return $ BlockingAssignment    a b }
+  , do { a <- lhs; tok Sym_lt_eq; b <- expr;     tok Sym_semi; return $ NonBlockingAssignment a b }
   , do { a <- call; tok Sym_semi; return $ StmtCall a }
   , do { tok KW_case; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- many case_; c <- default_; tok KW_endcase; return $ Case a b c }
   , do { tok Sym_semi; return Null }
@@ -212,8 +205,15 @@ sense = oneOf
   where
   sense' :: Verilog Sense
   sense' = oneOf
-    [ do { tok KW_posedge; a <- identifier; return $ SensePosedge a }
-    , do { tok KW_negedge; a <- identifier; return $ SenseNegedge a }
-    , do {                 a <- identifier; return $ Sense        a }
+    [ do { tok KW_posedge; a <- lhs; return $ SensePosedge a }
+    , do { tok KW_negedge; a <- lhs; return $ SenseNegedge a }
+    , do {                 a <- lhs; return $ Sense        a }
     ]
+
+lhs :: Verilog LHS
+lhs = oneOf
+  [ do { a <- identifier; b <- range; return $ LHSRange a b }
+  , do { a <- identifier; b <- bit;   return $ LHSBit   a b }
+  , do { a <- identifier;             return $ LHS      a   }
+  ]
 

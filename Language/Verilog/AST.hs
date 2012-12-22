@@ -3,7 +3,7 @@ module Language.Verilog.AST
   , Module     (..)
   , ModuleItem (..)
   , Stmt       (..)
-  , Lit        (..)
+  , LHS        (..)
   , Expr       (..)
   , Sense      (..)
   , Call       (..)
@@ -35,7 +35,7 @@ data ModuleItem
   | Reg       (Maybe Range) [(Identifier, Maybe Range)]
   | Initial    Stmt
   | Always     Sense Stmt
-  | Assign     Identifier Expr
+  | Assign     LHS Expr
   | Instance   Identifier [(Identifier, Maybe Expr)] Identifier [(Identifier, Maybe Expr)]
   deriving Eq
 
@@ -72,23 +72,11 @@ indent a = '\t' : f a
 unlines' :: [String] -> String
 unlines' = intercalate "\n"
 
-data Lit
-  = String String
-  | Number String
-  | Bool   Bool
-  deriving Eq
-
-instance Show Lit where
-  show a = case a of
-    String a -> printf "\"%s\"" a
-    Number a -> a
-    Bool   a -> printf "1'b%s" (if a then "1" else "0")
-
 data Expr
-  = Lit        Lit
-  | Var        Identifier
-  | VarBit     Identifier Expr
-  | VarRange   Identifier Range
+  = String     String
+  | Number     String
+  | ConstBool  Bool
+  | ExprLHS    LHS
   | ExprCall   Call
   | Not        Expr
   | And        Expr Expr
@@ -117,10 +105,10 @@ data Expr
 
 instance Show Expr where
   show a = case a of
-    Lit        a -> show a
-    Var        a -> a
-    VarBit     a b   -> printf "%s[%s]" (show a) (show b)
-    VarRange   a (b, c) -> printf "%s[%s:%s]" (show a) (show b) (show c)
+    String     a -> printf "\"%s\"" a
+    Number     a -> a
+    ConstBool  a -> printf "1'b%s" (if a then "1" else "0")
+    ExprLHS    a -> show a
     ExprCall   a -> show a
     Not        a -> printf "(! %s)" $ show a
     And        a b -> printf "(%s && %s)" (show a) (show b)
@@ -146,12 +134,24 @@ instance Show Expr where
     Repeat     a b   -> printf "{%s {%s}}" (show a) (commas $ map show b)
     Concat     a     -> printf "{%s}" (commas $ map show a)
 
+data LHS
+  = LHS      Identifier
+  | LHSBit   Identifier Expr
+  | LHSRange Identifier Range
+  deriving Eq
+
+instance Show LHS where
+  show a = case a of
+    LHS        a -> a
+    LHSBit     a b   -> printf "%s[%s]" (show a) (show b)
+    LHSRange   a (b, c) -> printf "%s[%s:%s]" (show a) (show b) (show c)
+
 data Stmt
   = Block                 (Maybe Identifier) [Stmt]
   | Integer               Identifier
   | Case                  Expr [Case] Stmt
-  | BlockingAssignment    Identifier Expr
-  | NonBlockingAssignment Identifier Expr
+  | BlockingAssignment    LHS Expr
+  | NonBlockingAssignment LHS Expr
   | For                   (Identifier, Expr) Expr (Identifier, Expr) Stmt
   | If                    Expr Stmt Stmt
   | StmtCall              Call
@@ -188,10 +188,10 @@ instance Show Call where
   show (Call a b) = printf "%s(%s)" a (commas $ map show b)
 
 data Sense
-  = Sense        Identifier
+  = Sense        LHS
   | SenseOr      Sense Sense
-  | SensePosedge Identifier
-  | SenseNegedge Identifier
+  | SensePosedge LHS
+  | SenseNegedge LHS
   deriving Eq
 
 instance Show Sense where

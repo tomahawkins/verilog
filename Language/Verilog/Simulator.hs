@@ -14,13 +14,12 @@ import Text.Printf
 
 import Data.VCD ()
 
-import Language.Verilog.AST hiding (Var)
-import qualified Language.Verilog.AST as A
+import Language.Verilog.AST
 
 -- | Simulation given the top level module name, a list of modules, and a test bench function.
 simulate :: [Module] -> Identifier -> Identifier -> IO ()
-simulate modules top clock = do
-  cs <- execStateT (compileModule topModule) (CompilerState 0 modules [top] top [] [] False $ Just clock)
+simulate modules top _ = do
+  cs <- execStateT (compileModule topModule) (CompilerState 0 modules [top] top [] [] False)
   when (hitError cs) exitFailure
   return ()
   where
@@ -43,7 +42,6 @@ data CompilerState = CompilerState
   , assignments :: [Assignment]
   , environment :: [(Identifier, Var)]
   , hitError    :: Bool
-  , clock       :: Maybe Identifier
   }
 
 type VC = StateT CompilerState IO
@@ -52,15 +50,12 @@ compileModule :: Module -> VC ()
 compileModule (Module _ _ items) = mapM_ compileModuleItem items
 
 extendEnv :: Int -> Identifier -> VC ()
-extendEnv width name = do
-  c <- get
-  when (clock c /= Just name) $ do
-    put c { nextId = nextId c + 1, environment = (name, Var (nextId c) width [path c ++ [name]]) : environment c }
+extendEnv width name = modify $ \ c -> c { nextId = nextId c + 1, environment = (name, Var (nextId c) width [path c ++ [name]]) : environment c }
 
 extendEnv' :: Maybe Range -> [(Identifier, Maybe Range)] -> VC ()
 extendEnv' range vars = case range of
   Nothing                       -> mapM_ (f 1)         vars
-  Just (Lit (Number msb), Lit (Number "0")) -> mapM_ (f $ num msb) vars
+  Just (Number msb, Number "0") -> mapM_ (f $ num msb) vars
   Just r -> error' $ "Invalid range in variable declaration: " ++ show r
   where
   num :: String -> Int
@@ -91,12 +86,13 @@ assignVar (v, e) = do
   e <- compileExpr e
   put c { assignments = assignments c ++ [AssignVar v e] }
 
-assignReg :: (Identifier, Expr) -> VC ()
-assignReg (v, e) = do
-  c <- get
-  v <- getVar v
-  e <- compileExpr e
-  put c { assignments = assignments c ++ [AssignReg v e] }
+assignReg :: Identifier -> (Identifier, Expr) -> VC ()
+assignReg clk (v, e) = do
+  c   <- get
+  clk <- getVar clk
+  v   <- getVar v
+  e   <- compileExpr e
+  put c { assignments = assignments c ++ [AssignReg clk v e] }
 
 compileModuleItem :: ModuleItem -> VC ()
 compileModuleItem a = case a of
@@ -117,32 +113,27 @@ compileModuleItem a = case a of
     s <- checkSense sense
     case s of
       Combinational -> compileCombStmt stmt
-      Posedge       -> compileSeqStmt  stmt
-      Negedge       -> warning "negedge always block ignored."
+      Posedge clk   -> compileSeqStmt clk stmt
+      Negedge _     -> warning "negedge always block ignored."
 
-  Assign v e -> assignVar (v, e)
+  Assign (LHS v) e -> assignVar (v, e)
+  Assign _ _ -> error' $ "Invalid assignment: " ++ show a
 
-  Instance mName parameters iName bindings -> do
+
+  Instance mName parameters iName _bindings -> do
     c <- get 
     case lookupModule mName $ modules c of
       Nothing -> return () --XXX Need to handle externals.
       Just m -> do
         c0 <- get
-        put c0 { moduleName = mName, path = path c0 ++ [iName], environment = [], clock = subClock c0 }
+        put c0 { moduleName = mName, path = path c0 ++ [iName], environment = [] }
         sequence_ [ extendEnv undefined param >> assignVar (param, value) | (param, Just value) <- parameters ]  --XXX How to handle unknown parameter width?
         compileModule m
         --XXX Do bindings after module elaboration.  How to determine direction?
         c1 <- get
-        put c1 { moduleName = moduleName c0, path = path c0, environment = environment c0, clock = clock c0 }
-    where
-    subClock :: CompilerState -> Maybe Identifier
-    subClock c = case clock c of
-      Nothing  -> Nothing
-      Just clk -> case [ newClock | (var, Just newClock) <- bindings, var == clk ] of
-        [A.Var c] -> Just c
-        _ -> Nothing
+        put c1 { moduleName = moduleName c0, path = path c0, environment = environment c0 }
 
-data SenseType = Combinational | Posedge | Negedge
+data SenseType = Combinational | Posedge Identifier | Negedge Identifier
 
 checkSense :: Sense -> VC SenseType
 checkSense sense = case sense of
@@ -153,10 +144,9 @@ checkSense sense = case sense of
     case (a, b) of
       (Combinational, Combinational) -> return Combinational
       _ -> invalid
-  SensePosedge a -> do
-    c <- get
-    if Just a == clock c then return Posedge else invalid
-  SenseNegedge _ -> return Negedge
+  SensePosedge (LHS a) -> return $ Posedge a
+  SenseNegedge (LHS a) -> return $ Negedge a
+  _ -> invalid
   where
   invalid = do
     error' $ "Unsupported sense: " ++ show sense
@@ -165,8 +155,8 @@ checkSense sense = case sense of
 compileCombStmt :: Stmt -> VC ()
 compileCombStmt a = compileStmt False a >>= mapM_ assignVar
 
-compileSeqStmt :: Stmt -> VC ()
-compileSeqStmt a = compileStmt True a >>= mapM_ assignReg
+compileSeqStmt :: Identifier -> Stmt -> VC ()
+compileSeqStmt clk a = compileStmt True a >>= mapM_ (assignReg clk)
 
 compileStmt :: Bool -> Stmt -> VC [(Identifier, Expr)]
 compileStmt seq stmt = case stmt of
@@ -180,8 +170,8 @@ compileStmt seq stmt = case stmt of
       [] -> def
       (values, stmt) : rest -> If (foldl1 Or [ Eq value scrutee | value <- values ]) stmt $ f rest
 
-  BlockingAssignment    v e | not seq -> return [(v, e)]
-  NonBlockingAssignment v e | seq     -> return [(v, e)]
+  BlockingAssignment    (LHS v) e | not seq -> return [(v, e)]
+  NonBlockingAssignment (LHS v) e | seq     -> return [(v, e)]
 
   If pred onTrue onFalse -> do  --XXX How to handle empty, but unreachable branches?  Bluespec code is filled with them.
     t <- compileStmt seq onTrue
@@ -190,12 +180,12 @@ compileStmt seq stmt = case stmt of
     where
     merge :: [(Identifier, Expr)] -> [(Identifier, Expr)] -> Identifier -> VC (Identifier, Expr)
     merge t f v = case (lookup v t, lookup v f) of
-      (Just a , Just b )       -> return (v, Mux pred a       b      )
-      (Just a , Nothing) | seq -> return (v, Mux pred a       (A.Var v))
-      (Nothing, Just b ) | seq -> return (v, Mux pred (A.Var v) b      )
+      (Just a , Just b )       -> return (v, Mux pred a                 b                )
+      (Just a , Nothing) | seq -> return (v, Mux pred a                 (ExprLHS $ LHS v))
+      (Nothing, Just b ) | seq -> return (v, Mux pred (ExprLHS $ LHS v) b                )
       _ -> do
         error' $ printf "Invalid branch in %s always block regarding variable %s." (if seq then "sequential" else "combinational") v
-        return (v, Lit $ Number "0")
+        return (v, Number "0")
 
   Null -> return []
   _ -> do
@@ -262,7 +252,7 @@ type Path = [Identifier]
 -- | A sequence of variable assignments and memory updates in A-normal form.
 data Assignment
   = AssignVar Var AExpr
-  | AssignReg Var AExpr
+  | AssignReg Var Var AExpr
   | AssignMem Var AExpr AExpr
 
 data Var = Var Int Int [Path]  -- ^ Uid, width, path list of all signals tied together.
