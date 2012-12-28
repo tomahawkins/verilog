@@ -1,7 +1,7 @@
 name:    verilog
 version: 0.0.3
 
-category: Language, Hardware
+category: Language, Hardware, Embedded
 
 synopsis: A Verilog parser and simulator.
 
@@ -26,9 +26,10 @@ library
     array      >= 0.4   && < 5.0,
     mtl        >= 2.0   && < 3.0,
     polyparse  >= 1.4   && < 2.0,
-    vcd        >= 0.2.2 && < 0.3
+    vcd        >= 0.3.0 && < 0.4
 
   exposed-modules:
+    Data.BitVec
     Language.Verilog
     Language.Verilog.AST
     Language.Verilog.Parser

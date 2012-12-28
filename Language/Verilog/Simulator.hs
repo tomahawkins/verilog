@@ -12,10 +12,9 @@ import System.Exit
 import System.IO
 import Text.Printf
 
-import Data.VCD ()
-
 import Language.Verilog.AST
 import Language.Verilog.Simulator.ANF
+import Language.Verilog.Simulator.Sim ()
 
 -- | Simulation given the top level module name, a list of modules, and a test bench function.
 simulate :: [Module] -> Identifier -> Identifier -> IO ()
