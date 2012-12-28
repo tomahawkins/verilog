@@ -180,12 +180,18 @@ compileStmt seq stmt = case stmt of
     where
     merge :: [(Identifier, Expr)] -> [(Identifier, Expr)] -> Identifier -> VC (Identifier, Expr)
     merge t f v = case (lookup v t, lookup v f) of
-      (Just a , Just b )       -> return (v, Mux pred a                 b                )
-      (Just a , Nothing) | seq -> return (v, Mux pred a                 (ExprLHS $ LHS v))
-      (Nothing, Just b ) | seq -> return (v, Mux pred (ExprLHS $ LHS v) b                )
-      _ -> do
-        error' $ printf "Invalid branch in %s always block regarding variable %s." (if seq then "sequential" else "combinational") v
-        return (v, Number "0")
+      (Nothing, Nothing) -> error "Simulator: Should be not get here."
+      (Just a , Just b ) -> return (v, Mux pred a b)
+      (Just a , Nothing)
+        | seq       -> return (v, Mux pred a                 (ExprLHS $ LHS v))
+        | otherwise -> do
+            warning $ printf "Branch in combinational always block is missing assignment for variable %s.  Assigning to zero." v
+            return (v, Mux pred a $ Number "0")
+      (Nothing, Just b )
+        | seq -> return (v, Mux pred (ExprLHS $ LHS v) b                )
+        | otherwise -> do
+            warning $ printf "Branch in combinational always block is missing assignment for variable %s.  Assigning to zero." v
+            return (v, Mux pred b $ Number "0")
 
   Null -> return []
   _ -> do
