@@ -14,7 +14,6 @@ type Path = [Identifier]
 data Assignment
   = AssignVar Var AExpr
   | AssignReg Var Var AExpr
-  | AssignMem Var AExpr AExpr
 
 data Var = Var Int Int [Path]  -- ^ Uid, width, path list of all signals tied together.
 

@@ -49,13 +49,8 @@ extendEnv :: Int -> Identifier -> VC ()
 extendEnv width name = modify $ \ c -> c { nextId = nextId c + 1, environment = (name, Var (nextId c) width [path c ++ [name]]) : environment c }
 
 extendEnv' :: Maybe Range -> [(Identifier, Maybe Range)] -> VC ()
-extendEnv' range vars = case range of
-  Nothing                       -> mapM_ (f 1)         vars
-  Just (Number msb, Number "0") -> mapM_ (f $ num msb) vars
-  Just r -> error' $ "Invalid range in variable declaration: " ++ show r
+extendEnv' range vars = mapM_ (f $ width range) vars
   where
-  num :: String -> Int
-  num = read  -- XXX This will fail on 'h format.
   f :: Int -> (Identifier, Maybe Range) -> VC ()
   f width (var, array) = case array of
     Nothing -> extendEnv width var
@@ -69,11 +64,6 @@ getVar a = do
       error' $ "Variable not found: " ++ a
       return $ Var 0 0 []
     Just a -> return a
-
-inEnv :: Identifier -> VC Bool
-inEnv a = do
-  c <- get
-  return $ elem a $ fst $ unzip $ environment c
 
 assignVar :: (Identifier, Expr) -> VC ()
 assignVar (v, e) = do
@@ -92,14 +82,9 @@ assignReg clk (v, e) = do
 
 compileModuleItem :: ModuleItem -> VC ()
 compileModuleItem a = case a of
-  Parameter range var expr -> do
-    inEnv <- inEnv var
-    when (not inEnv) $ do
-      extendEnv' range [(var, Nothing)]
-      assignVar (var, expr)
-    
-  Inout   _ _ -> error' "inout not supported."
-  Input  range vars -> extendEnv' range vars
+  Parameter _ _ _ -> return () -- Parameters bound at instantiation.
+  Inout  _ _ -> error' "inout not supported."
+  Input  _ _ -> return ()  -- Inputs added to environment at instantiation.  XXX How to then handle the top level?
   Output range vars -> extendEnv' range vars
   Wire   range vars -> extendEnv' range vars
   Reg    range vars -> extendEnv' range vars
@@ -115,19 +100,39 @@ compileModuleItem a = case a of
   Assign (LHS v) e -> assignVar (v, e)
   Assign _ _ -> error' $ "Invalid assignment: " ++ show a
 
-
-  Instance mName parameters iName _bindings -> do
+  Instance mName parameters iName bindings' -> do
     c <- get 
     case lookupModule mName $ modules c of
       Nothing -> return () --XXX Need to handle externals.
       Just m -> do
         c0 <- get
         put c0 { moduleName = mName, path = path c0 ++ [iName], environment = [] }
-        sequence_ [ extendEnv undefined param >> assignVar (param, value) | (param, Just value) <- parameters ]  --XXX How to handle unknown parameter width?
+        mapM_ (\ (var, w) -> do
+          extendEnv w var
+          case lookup var bindings of
+            Nothing       -> error' $ "Unbound input or parameter: " ++ show var
+            Just Nothing  -> error' $ "Unbound input or parameter: " ++ show var
+            Just (Just e) -> assignVar (var, e)
+          ) inputs
         compileModule m
         --XXX Do bindings after module elaboration.  How to determine direction?
         c1 <- get
         put c1 { moduleName = moduleName c0, path = path c0, environment = environment c0 }
+        where
+        Module _ _ items = m
+        inputs :: [(String, Int)]
+        inputs = concat [ [ (var, width range) | (var, _) <- vars ] | Input range vars <- items ] ++
+                 [ (var, width range) | Parameter range var _ <- items ]
+        outputs :: [(String, Int)]
+        outputs = concat [ [ (var, width range) | (var, _) <- vars ] | Output range vars <- items ]
+    where
+    bindings = parameters ++ bindings'
+
+width :: Maybe Range -> Int
+width a = case a of
+  Nothing -> 1
+  Just (Number msb, Number "0") -> read msb + 1
+  Just r -> error $ "Invalid range in variable declaration: " ++ show r
 
 data SenseType = Combinational | Posedge Identifier | Negedge Identifier
 

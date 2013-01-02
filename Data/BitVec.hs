@@ -11,18 +11,28 @@ import Data.Monoid
 data BitVec = BitVec Int Integer deriving (Show, Eq)
 
 instance Num BitVec where
-  BitVec w1 v1 + BitVec w2 v2 = BitVec (max w1 w2) (v1 + v2)
-  BitVec w1 v1 - BitVec w2 v2 = bitVec w $ v1 - v2 where w = max w1 w2
-  BitVec w1 v1 * BitVec w2 v2 = BitVec (w1 + w2) (v1 * v2)
+  BitVec w1 v1 + BitVec w2 v2 = bitVec (max w1 w2) (v1 + v2)
+  BitVec w1 v1 - BitVec w2 v2 = bitVec (max w1 w2) (v1 - v2)
+  BitVec w1 v1 * BitVec w2 v2 = bitVec (max w1 w2) (v1 * v2)
   abs = id
-  signum (BitVec _ v) = if v == 0 then 0 else 1
-  fromInteger = error "BitVec can not be created fromInteger."
+  signum (BitVec _ v) = if v == 0 then bitVec 1 0 else bitVec 1 1
+  fromInteger i = bitVec (width i) i
+    where
+    width :: Integer -> Int
+    width a
+      | a ==  0   = 0
+      | a == -1   = 1
+      | otherwise = 1 + width (shiftR a 1)
 
 instance Bits BitVec where
-  BitVec w1 v1 .&.   BitVec w2 v2 = BitVec (max w1 w2) (v1 .&.   v2)
-  BitVec w1 v1 .|.   BitVec w2 v2 = BitVec (max w1 w2) (v1 .|.   v2)
-  BitVec w1 v1 `xor` BitVec w2 v2 = BitVec (max w1 w2) (v1 `xor` v2)
+  BitVec w1 v1 .&.   BitVec w2 v2 = bitVec (max w1 w2) (v1 .&.   v2)
+  BitVec w1 v1 .|.   BitVec w2 v2 = bitVec (max w1 w2) (v1 .|.   v2)
+  BitVec w1 v1 `xor` BitVec w2 v2 = bitVec (max w1 w2) (v1 `xor` v2)
   complement (BitVec w v) = bitVec w $ complement v
+  shift (BitVec w v) i = bitVec w $ shift v i
+  rotate _ _ = undefined --XXX  To lazy to implemented it now.
+  bit i = fromInteger $ bit i
+  testBit (BitVec _ v) i = testBit v i
   bitSize (BitVec w _) = w
   isSigned _ = False
 

@@ -39,6 +39,7 @@ library
     Language.Verilog.Simulator
     Language.Verilog.Simulator.ANF
     Language.Verilog.Simulator.Compile
+    Language.Verilog.Simulator.Run
 
   extensions:
 

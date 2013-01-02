@@ -8,10 +8,9 @@ module Language.Verilog.Simulator
 import Language.Verilog.AST
 import Language.Verilog.Simulator.ANF
 import Language.Verilog.Simulator.Compile
+import Language.Verilog.Simulator.Run
 
--- | Simulation given the top level module name, a list of modules, and a test bench function.
-simulate :: [Module] -> Identifier -> Identifier -> IO ()
-simulate modules top _ = do
-  _ <- compile modules top
-  return ()
+-- | Simulate a design given a list of modules, the top level module name, and the vcd file name.
+simulate :: [Module] -> Identifier -> Int -> FilePath -> IO ()
+simulate modules top cycles vcd = compile modules top >>= run cycles vcd
 
