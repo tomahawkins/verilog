@@ -1,5 +1,5 @@
-module Language.Verilog.Simulator.Compile
-  ( compile
+module Language.Verilog.Simulator.ANormalize
+  ( aNormalize
   ) where
 
 import Control.Monad
@@ -13,8 +13,8 @@ import Language.Verilog.AST
 import Language.Verilog.Simulator.ANF
 
 -- | Compile AST down to ANF.
-compile :: [Module] -> Identifier -> IO [Assignment]
-compile modules top = do
+aNormalize :: [Module] -> Identifier -> IO [Assignment]
+aNormalize modules top = do
   cs <- execStateT (compileModule topModule) (CompilerState 0 modules [top] top [] [] False)
   when (hitError cs) exitFailure
   return $ assignments cs
@@ -59,6 +59,10 @@ extendEnv' range vars = mapM_ (f $ width range) vars
 getVar :: Identifier -> VC Var
 getVar a = do
   c <- get
+  getVar' c a
+
+getVar' :: CompilerState -> Identifier -> VC Var
+getVar' c a = do
   case lookup a $ environment c of
     Nothing -> do
       error' $ "Variable not found: " ++ a
@@ -72,13 +76,19 @@ assignVar (v, e) = do
   e <- compileExpr e
   put c { assignments = assignments c ++ [AssignVar v e] }
 
+assignVar' :: (Var, Expr) -> VC ()
+assignVar' (v, e) = do
+  e <- compileExpr e
+  modify $ \ c -> c { assignments = assignments c ++ [AssignVar v e] }
+
 assignReg :: Identifier -> (Identifier, Expr) -> VC ()
-assignReg clk (v, e) = do
+assignReg clk (q, e) = do
   c   <- get
   clk <- getVar clk
-  v   <- getVar v
+  q@(Var _ w _) <- getVar q
   e   <- compileExpr e
-  put c { assignments = assignments c ++ [AssignReg clk v e] }
+  d <- return $ Var (nextId c) w []
+  put c { nextId = nextId c + 1, assignments = assignments c ++ [AssignRegD clk d e, AssignRegQ q d] }
 
 compileModuleItem :: ModuleItem -> VC ()
 compileModuleItem a = case a of
@@ -113,20 +123,29 @@ compileModuleItem a = case a of
             Nothing       -> error' $ "Unbound input or parameter: " ++ show var
             Just Nothing  -> error' $ "Unbound input or parameter: " ++ show var
             Just (Just e) -> assignVar (var, e)
-          ) inputs
+          ) $ moduleInputs m
         compileModule m
-        --XXX Do bindings after module elaboration.  How to determine direction?
+        mapM_ (\ (var, w) -> do
+          case lookup var bindings of
+            Nothing      -> return ()
+            Just Nothing -> return ()
+            Just (Just (ExprLHS (LHS v))) -> do
+              v <- getVar' c0 v
+              assignVar' (v, ExprLHS $ LHS var)
+            _ -> error' $ "Invalid output port binding expression: " ++ show var
+          ) outputs
         c1 <- get
         put c1 { moduleName = moduleName c0, path = path c0, environment = environment c0 }
         where
         Module _ _ items = m
-        inputs :: [(String, Int)]
-        inputs = concat [ [ (var, width range) | (var, _) <- vars ] | Input range vars <- items ] ++
-                 [ (var, width range) | Parameter range var _ <- items ]
         outputs :: [(String, Int)]
         outputs = concat [ [ (var, width range) | (var, _) <- vars ] | Output range vars <- items ]
     where
     bindings = parameters ++ bindings'
+
+moduleInputs :: Module -> [(String, Int)]
+moduleInputs (Module _ _ items) = concat [ [ (var, width range) | (var, _) <- vars ] | Input range vars <- items ] ++
+  [ (var, width range) | Parameter range var _ <- items ]
 
 width :: Maybe Range -> Int
 width a = case a of

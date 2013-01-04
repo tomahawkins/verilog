@@ -12,13 +12,15 @@ type Path = [Identifier]
 
 -- | A sequence of variable assignments and memory updates in A-normal form.
 data Assignment
-  = AssignVar Var AExpr
-  | AssignReg Var Var AExpr
+  = AssignVar  Var AExpr      -- Id, signal expr.
+  | AssignRegD Var Var AExpr  -- Id, clock, D input.
+  | AssignRegQ Var Var        -- Id, D reference.
 
 data Var = Var Int Int [Path]  -- ^ Uid, width, path list of all signals tied together.
 
 data AExpr
-  = AConst      Int Integer  -- ^ Width, value.
+  = AVar        Var
+  | AConst      Int Integer  -- ^ Width, value.
   | ASelect     Var Int Int  -- ^ LSB is 0.
   | ABWNot      Var
   | ABWAnd      Var Var
