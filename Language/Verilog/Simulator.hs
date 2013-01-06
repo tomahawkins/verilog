@@ -41,17 +41,31 @@ simulator modules top = do
   initialized <- newIORef False
   vcd         <- newIORef Nothing
   memory      <- memory anf
-  getSignalId <- error "getSignalId"
-  getInputId  <- error "getInputId"
   step        <- error "step"
   return $ \ cmd -> case cmd of
     Init        file     -> initialize anf initialized memory vcd file >> return Nothing
     Step                 -> step                       >>  return Nothing
-    GetSignalId path     -> getSignalId path           >>= return . Just . Id
+    GetSignalId path     -> return $ getSignalId anf path
     GetSignal   id       -> readArray memory id        >>= return . Just . Value
-    GetInputId  path     -> getInputId path            >>= return . Just . Id
+    GetInputId  path     -> return $ getInputId anf path
     SetInput    id value -> writeArray memory id value >>  return Nothing
     Close                -> close initialized vcd      >>  return Nothing
+
+getSignalId :: NetList -> Path -> Maybe SimResponse
+getSignalId netlist path = case lookup path paths' of
+  Nothing -> Nothing
+  Just i  -> Just $ Id i
+  where
+  paths = [ (paths, id) | Reg id _ paths _ <- netlist ] ++ [ (paths, id) | Var id _ paths _ <- netlist ] 
+  paths' = [ (path, id) | (paths, id) <- paths, path <- paths ]
+
+getInputId :: NetList -> Path -> Maybe SimResponse
+getInputId netlist path = case lookup path paths' of
+  Nothing -> Nothing
+  Just i  -> Just $ Id i
+  where
+  paths = [ (paths, id) | Reg _ _ paths id <- netlist ]
+  paths' = [ (path, id) | (paths, id) <- paths, path <- paths ]
 
 type Memory = IOArray Int BitVec
 
