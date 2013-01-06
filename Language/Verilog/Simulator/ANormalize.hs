@@ -13,8 +13,10 @@ import Language.Verilog.AST
 import Language.Verilog.Simulator.ANF
 
 -- | Compile AST down to ANF.
-aNormalize :: [Module] -> Identifier -> IO [Assignment]
+aNormalize :: [Module] -> Identifier -> IO NetList
 aNormalize modules top = do
+  undefined
+  {-
   cs <- execStateT (compileModule topModule) (CompilerState 0 modules [top] top [] [] False)
   when (hitError cs) exitFailure
   return $ assignments cs
@@ -35,7 +37,7 @@ data CompilerState = CompilerState
   , modules     :: [Module]
   , path        :: Path
   , moduleName  :: Identifier
-  , assignments :: [Assignment]
+  , assignments :: NetList
   , environment :: [(Identifier, Var)]
   , hitError    :: Bool
   }
@@ -74,12 +76,12 @@ assignVar (v, e) = do
   c <- get
   v <- getVar v
   e <- compileExpr e
-  put c { assignments = assignments c ++ [AssignVar v e] }
+  put c { assignments = assignments c ++ [Var v e] }
 
 assignVar' :: (Var, Expr) -> VC ()
 assignVar' (v, e) = do
   e <- compileExpr e
-  modify $ \ c -> c { assignments = assignments c ++ [AssignVar v e] }
+  modify $ \ c -> c { assignments = assignments c ++ [Var v e] }
 
 assignReg :: Identifier -> (Identifier, Expr) -> VC ()
 assignReg clk (q, e) = do
@@ -88,7 +90,7 @@ assignReg clk (q, e) = do
   q@(Var _ w _) <- getVar q
   e   <- compileExpr e
   d <- return $ Var (nextId c) w []
-  put c { nextId = nextId c + 1, assignments = assignments c ++ [AssignRegD clk d e, AssignRegQ q d] }
+  put c { nextId = nextId c + 1, assignments = assignments c ++ [Var d e, AssignRegQ q d] }
 
 compileModuleItem :: ModuleItem -> VC ()
 compileModuleItem a = case a of
@@ -193,7 +195,7 @@ compileStmt seq stmt = case stmt of
   BlockingAssignment    (LHS v) e | not seq -> return [(v, e)]
   NonBlockingAssignment (LHS v) e | seq     -> return [(v, e)]
 
-  If pred onTrue onFalse -> do  --XXX How to handle empty, but unreachable branches?  Bluespec code is filled with them.
+  If pred onTrue onFalse -> do
     t <- compileStmt seq onTrue
     f <- compileStmt seq onFalse
     mapM (merge t f) $ nub $ fst $ unzip $ t ++ f
@@ -271,4 +273,4 @@ error' msg = do
     printf "ERROR   (module: %s) (instance: %s) : %s\n" (moduleName c) (intercalate "." $ path c) msg
     hFlush stdout
   put c { hitError = True }
-
+-}

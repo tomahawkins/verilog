@@ -12,7 +12,7 @@ import System.IO
 import Data.VCD hiding (Var)
 
 import Data.BitVec
-import Language.Verilog.AST
+import Language.Verilog.AST (Module, Identifier)
 import Language.Verilog.Simulator.ANF
 import Language.Verilog.Simulator.ANormalize
 
@@ -37,7 +37,7 @@ data SimResponse
 -- | Builds a 'Simulator' given a list of modules and the top level module name.
 simulator :: [Module] -> Identifier -> IO Simulator
 simulator modules top = do
-  anf         <- aNormalize modules top
+  anf         <- aNormalize modules top >>= return . sortTopo
   initialized <- newIORef False
   vcd         <- newIORef Nothing
   memory      <- memory anf
@@ -53,23 +53,21 @@ simulator modules top = do
     SetInput    id value -> writeArray memory id value >>  return Nothing
     Close                -> close initialized vcd      >>  return Nothing
 
-
 type Memory = IOArray Int BitVec
 
-memory :: [Assignment] -> IO Memory
+memory :: NetList -> IO Memory
 memory anf = newArray (0, maximum ids) 0
   where
   ids = map f anf
   f a = case a of
-    AssignVar  (Var a _ _) _   -> a
-    AssignRegD (Var a _ _) _ _ -> a
-    AssignRegQ (Var a _ _) _   -> a
+    Var a _ _ _ -> a
+    Reg a _ _ _ -> a
 
-initialize :: [Assignment] -> IORef Bool -> Memory -> IORef (Maybe VCDHandle) -> Maybe FilePath -> IO ()
+initialize :: NetList -> IORef Bool -> Memory -> IORef (Maybe VCDHandle) -> Maybe FilePath -> IO ()
 initialize anf initialized memory vcd file = do
   close initialized vcd
   writeIORef initialized True
-  --XXX Initialize memory.
+  mapM_ (initializeNet memory) anf
   case file of
     Nothing -> writeIORef vcd Nothing
     Just file -> do
@@ -77,6 +75,11 @@ initialize anf initialized memory vcd file = do
       vcd' <- newVCD h S
       --XXX Define signals.
       writeIORef vcd $ Just vcd'
+
+initializeNet :: Memory -> Net -> IO ()
+initializeNet memory a = case a of
+  Var i w _ _ -> writeArray memory i $ bitVec w 0
+  Reg i w _ _ -> writeArray memory i $ bitVec w 0
 
 close :: IORef Bool -> IORef (Maybe VCDHandle) -> IO ()
 close initialized vcd = do
