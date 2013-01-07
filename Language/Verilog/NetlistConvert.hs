@@ -1,5 +1,5 @@
-module Language.Verilog.Simulator.ANormalize
-  ( aNormalize
+module Language.Verilog.NetlistConvert
+  ( netlist
   ) where
 
 import Control.Monad
@@ -10,11 +10,11 @@ import System.IO
 import Text.Printf
 
 import Language.Verilog.AST
-import Language.Verilog.Simulator.ANF
+import Language.Verilog.Netlist
 
--- | Compile AST down to ANF.
-aNormalize :: [Module] -> Identifier -> IO Netlist
-aNormalize modules top = do
+-- | Netlist from AST.
+netlist :: [Module] -> Identifier -> IO Netlist
+netlist modules top = do
   undefined
   {-
   cs <- execStateT (compileModule topModule) (CompilerState 0 modules [top] top [] [] False)

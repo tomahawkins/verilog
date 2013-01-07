@@ -15,9 +15,7 @@ import Data.VCD hiding (Var, step)
 import qualified Data.VCD as VCD
 
 import Data.BitVec
-import Language.Verilog.AST (Module, Identifier)
-import Language.Verilog.Simulator.ANF
-import Language.Verilog.Simulator.ANormalize
+import Language.Verilog.Netlist
 
 -- | A Simulator executes 'SimCommand's.
 type Simulator = SimCommand -> IO (Maybe SimResponse)
@@ -37,22 +35,22 @@ data SimResponse
   = Id    NetId  -- ^ Response to GetSignalId and GetInputId.
   | Value BitVec -- ^ Response to GetSignal.
 
--- | Builds a 'Simulator' given a list of modules and the top level module name.
-simulator :: [Module] -> Identifier -> IO Simulator
-simulator modules top = do
-  netlist     <- aNormalize modules top >>= return . sortTopo
+-- | Builds a 'Simulator' given a 'Netlist'.
+simulator :: Netlist -> IO Simulator
+simulator netlist' = do
+  let netlist = sortTopo netlist'
   vcd         <- newIORef Nothing
-  vcdSample   <- newIORef $ return ()
+  sample      <- newIORef $ return ()
   memory      <- memory netlist
-  step        <- step netlist memory vcdSample
+  step        <- step netlist memory sample
   return $ \ cmd -> case cmd of
-    Init        file     -> initialize netlist memory vcd file vcdSample
+    Init        file     -> initialize netlist memory vcd file sample
     Step                 -> step >> return Nothing
     GetSignalId path     -> return $ getSignalId netlist path
     GetSignal   id       -> readArray memory id        >>= return . Just . Value
     GetInputId  path     -> return $ getInputId netlist path
     SetInput    id value -> writeArray memory id value >>  return Nothing
-    Close                -> close vcd vcdSample >>  return Nothing
+    Close                -> close vcd sample >>  return Nothing
 
 getSignalId :: Netlist -> Path -> Maybe SimResponse
 getSignalId netlist path = case lookup path paths' of
@@ -73,16 +71,18 @@ getInputId netlist path = case lookup path paths' of
 type Memory = IOArray Int BitVec
 
 memory :: Netlist -> IO Memory
-memory anf = newArray (0, maximum ids) 0
+memory netlist
+  | null netlist = error "Empty netlist, nothing to simulate."
+  | otherwise    = newArray (0, maximum ids) 0
   where
-  ids = map f anf
+  ids = map f netlist
   f a = case a of
     Var a _ _ _ -> a
     Reg a _ _ _ -> a
 
 initialize :: Netlist -> Memory -> IORef (Maybe VCDHandle) -> Maybe FilePath -> IORef (IO ()) -> IO (Maybe SimResponse)
-initialize netlist memory vcd file vcdSample = do
-  close vcd vcdSample
+initialize netlist memory vcd file sample = do
+  close vcd sample
   mapM_ (initializeNet memory) netlist 
   case file of
     Nothing -> return ()
@@ -90,14 +90,15 @@ initialize netlist memory vcd file vcdSample = do
       h <- openFile file WriteMode
       vcd' <- newVCD h S
       writeIORef vcd $ Just vcd'
-      writeIORef vcdSample $ VCD.step vcd' 1
-      mapM_ (f memory vcd' vcdSample) netlist
+      writeIORef sample $ VCD.step vcd' 1
+      mapM_ (f memory vcd' sample) netlist
   return Nothing
   where
   f :: Memory -> VCDHandle -> IORef (IO ()) -> Net -> IO ()
-  f memory vcd vcdSample a = mapM_ (\ signal -> do
-    sample <- var vcd signal $ bitVec width 0
-    modifyIORef vcdSample (>> (readArray memory i >>= sample))
+  f memory vcd sample a = mapM_ (\ signal -> do
+    print signal
+    sample' <- var vcd signal $ bitVec width 0
+    modifyIORef sample (>> (readArray memory i >>= sample'))
     ) signals
     where
     (i, width, signals) = case a of
@@ -110,21 +111,20 @@ initializeNet memory a = case a of
   Reg i w _ _ -> writeArray memory i $ bitVec w 0
 
 close :: IORef (Maybe VCDHandle) -> IORef (IO ()) -> IO ()
-close vcd vcdSample = do
+close vcd sample = do
   vcd' <- readIORef vcd
   case vcd' of
     Nothing -> return ()
     Just vcd -> hClose $ handle vcd
   writeIORef vcd $ Nothing
-  writeIORef vcdSample $ return ()
+  writeIORef sample $ return ()
 
 step :: Netlist -> Memory -> IORef (IO ()) -> IO (IO ())
 step netlist memory sample = do
-  sample <- readIORef sample
   let steps = map stepNet netlist
   return $ do
     sequence_ steps
-    sample
+    readIORef sample >>= id
   where
   read  = readArray memory
   write' = writeArray memory

@@ -1,4 +1,4 @@
-module Language.Verilog.Simulator.ANF
+module Language.Verilog.Netlist
   ( Path
   , NetId
   , Width
