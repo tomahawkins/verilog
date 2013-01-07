@@ -3,7 +3,7 @@ module Language.Verilog.Simulator.ANF
   , NetId
   , Width
   , Net     (..)
-  , NetList
+  , Netlist
   , AExpr   (..)
   , sortTopo
   ) where
@@ -25,7 +25,7 @@ data Net
   = Var NetId Width [Path] AExpr  -- ^ Signal, width, paths, signal expression.
   | Reg NetId Width [Path] NetId  -- ^ Signal, width, paths, associated D-inputs.
 
-type NetList = [Net]
+type Netlist = [Net]
 
 data AExpr
   = AVar    NetId
@@ -48,7 +48,7 @@ data AExpr
   | AMux    NetId NetId NetId
   | AConcat NetId NetId
 
-sortTopo :: NetList -> NetList
+sortTopo :: Netlist -> Netlist
 sortTopo a = regs ++ [ Var id width paths expr | (id, width, paths, expr) <- f [] regIds vars ]
   where
   (regs, regIds) = unzip [ (r, id) | r@(Reg id _ _ _) <- a ]

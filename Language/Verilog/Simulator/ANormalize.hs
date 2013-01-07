@@ -13,7 +13,7 @@ import Language.Verilog.AST
 import Language.Verilog.Simulator.ANF
 
 -- | Compile AST down to ANF.
-aNormalize :: [Module] -> Identifier -> IO NetList
+aNormalize :: [Module] -> Identifier -> IO Netlist
 aNormalize modules top = do
   undefined
   {-

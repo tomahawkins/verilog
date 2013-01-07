@@ -3,6 +3,8 @@ module Data.BitVec
   ( BitVec
   , bitVec
   , select
+  , width
+  , value
   ) where
 
 import Data.Bits
@@ -49,4 +51,12 @@ bitVec w v = BitVec w' $ v .&. ((2 ^ fromIntegral w') - 1)
 -- | Bit seclection.  LSB is 0.
 select :: BitVec -> (Int, Int) -> BitVec
 select (BitVec _ v) (msb, lsb) = bitVec (msb - lsb + 1) $ shiftR v lsb
+
+-- | Width of a 'BitVec'.
+width :: BitVec -> Int
+width (BitVec w _) = w
+
+-- | Value of a 'BitVec'.
+value :: BitVec -> Integer
+value (BitVec _ v) = v
 
