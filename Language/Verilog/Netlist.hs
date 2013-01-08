@@ -58,7 +58,7 @@ sortTopo a = regs ++ [ Var id width paths expr | (id, width, paths, expr) <- f [
   vars = [ (id, width, paths, expr) | Var id width paths expr <- a ]
   f sofar avail rest
     | null rest = sofar
-    | null next = error $ "Combinational loop somewhere in : " ++ unlines (map show l1)  --XXX Not a combinational loop problem.  Variables are references, but not defined in the netlist.
+    | null next = error $ "Combinational loop somewhere in :\n" ++ unlines (map show l1)  --XXX Not a combinational loop problem.  Variables are references, but not defined in the netlist.
     | otherwise = f (sofar ++ next) (avail ++ [ id | (id, _, _, _) <- next ]) rest'
     where
     (next, rest') = partition p rest

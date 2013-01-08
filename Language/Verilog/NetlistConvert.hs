@@ -13,24 +13,6 @@ import Language.Verilog.AST
 import Language.Verilog.Netlist hiding (Reg)
 import qualified Language.Verilog.Netlist as N
 
--- | Netlist a collection of modules given a top level module name.
-netlist :: [Module] -> Identifier -> IO Netlist
-netlist modules top = do
-  cs <- execStateT (compileModule topModule) (CompilerState 0 modules [top] top [] [] False)
-  when (hitError cs) exitFailure
-  return $ assignments cs
-  where
-  topModule = case lookupModule top modules of
-    Nothing -> error $ "Top module not found: " ++ top
-    Just m  -> m
-
-lookupModule :: Identifier -> [Module] -> Maybe Module
-lookupModule name modules = case [ m | m@(Module n _ _ ) <- modules, name == n ] of
-  [m] -> Just m
-  []  -> Nothing
-  _   -> error $ "Duplicate modules of same name: " ++ name
-
-
 data CompilerState = CompilerState
   { nextId      :: NetId
   , modules     :: [Module]
@@ -43,11 +25,44 @@ data CompilerState = CompilerState
 
 type VC = StateT CompilerState IO
 
+-- | Netlist a collection of modules given a top level module name.
+netlist :: [Module] -> Identifier -> IO Netlist
+netlist modules top = do
+  cs <- execStateT (compileModule topModule) $ initialCompilerState modules top topModule
+  when (hitError cs) exitFailure
+  return $ assignments cs
+  where
+  topModule = case lookupModule top modules of
+    Nothing -> error $ "Top module not found: " ++ top
+    Just m  -> m
+
+initialCompilerState :: [Module] -> Identifier -> Module -> CompilerState
+initialCompilerState modules top topModule  = CompilerState
+  { nextId      = length inputs * 2
+  , modules     = modules
+  , path        = [top]
+  , moduleName  = top
+  , assignments = concat [ [Var i w [] AInput, N.Reg j w [[top, n]] i]
+                         | (i, j, (n, w)) <- zip3 [0, 2 ..] [1, 3 ..] inputs
+                         ]
+  , environment = [ (n, (i, w)) | (i, (n, w)) <- zip [1, 3 ..] inputs ]
+  , hitError    = False
+  }
+  where
+  inputs = moduleInputs topModule
+
+lookupModule :: Identifier -> [Module] -> Maybe Module
+lookupModule name modules = case [ m | m@(Module n _ _ ) <- modules, name == n ] of
+  [m] -> Just m
+  []  -> Nothing
+  _   -> error $ "Duplicate modules of same name: " ++ name
+
 compileModule :: Module -> VC ()
 compileModule (Module _ _ items) = mapM_ compileModuleItem items
 
 extendEnv :: Int -> Identifier -> VC ()
-extendEnv width name = modify $ \ c -> c { nextId = nextId c + 1, environment = (name, (nextId c, width)) : environment c }
+extendEnv width name = do
+  modify $ \ c -> if elem name $ fst $ unzip $ environment c then c else c { nextId = nextId c + 1, environment = (name, (nextId c, width)) : environment c }
 
 extendEnv' :: Maybe Range -> [(Identifier, Maybe Range)] -> VC ()
 extendEnv' range vars = mapM_ (f $ width range) vars
@@ -81,13 +96,13 @@ assignReg :: (Identifier, Expr) -> VC ()
 assignReg (q, e) = do
   (i, w) <- getNetId q
   e   <- compileExpr e
-  modify $ \ c ->c { nextId = nextId c + 1, assignments = assignments c ++ [Var (nextId c) w [] e, N.Reg i w [path c ++ [q]] (nextId c)] }
+  modify $ \ c -> c { nextId = nextId c + 1, assignments = assignments c ++ [Var (nextId c) w [] e, N.Reg i w [path c ++ [q]] (nextId c)] }
 
 compileModuleItem :: ModuleItem -> VC ()
 compileModuleItem a = case a of
   Parameter _ _ _ -> return () -- Parameters bound at instantiation.
   Inout  _ _ -> error' "inout not supported."
-  Input  _ _ -> return ()  -- Inputs added to environment at instantiation.  XXX How to then handle the top level?
+  Input  _ _ -> return ()  -- Inputs added to environment at instantiation.
   Output range vars -> extendEnv' range vars
   Wire   range vars -> extendEnv' range vars
   Reg    range vars -> extendEnv' range vars
@@ -277,3 +292,4 @@ error' msg = do
     printf "ERROR   (module: %s) (instance: %s) : %s\n" (moduleName c) (intercalate "." $ path c) msg
     hFlush stdout
   put c { hitError = True }
+

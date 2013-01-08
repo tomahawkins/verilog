@@ -96,7 +96,6 @@ initialize netlist memory vcd file sample = do
   where
   f :: Memory -> VCDHandle -> IORef (IO ()) -> Net -> IO ()
   f memory vcd sample a = mapM_ (\ signal -> do
-    print signal
     sample' <- var vcd signal $ bitVec width 0
     modifyIORef sample (>> (readArray memory i >>= sample'))
     ) signals
