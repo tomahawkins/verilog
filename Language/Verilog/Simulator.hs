@@ -132,9 +132,10 @@ step netlist memory sample = do
   stepNet a = case a of
     Reg q _ _ d -> read d >>= write' q
     Var i _ _ expr -> case expr of
-      AVar    a -> read a >>= write
-      AConst  w v -> write $ bitVec w v
-      ASelect a msb lsb -> read a >>= write . flip select (msb, lsb)
+      AInput        -> return ()
+      AVar    a     -> read a >>= write
+      AConst  w v   -> write $ bitVec w v
+      ASelect a b c -> read a >>= write . flip select (b, c)
       ABWNot  a     -> read a >>= write . complement
       ABWAnd  a b   -> do { a <- read a; b <- read b; write $ a .&. b }
       ABWXor  a b   -> do { a <- read a; b <- read b; write $ a `xor` b }

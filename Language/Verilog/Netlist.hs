@@ -24,11 +24,13 @@ type Width  = Int
 data Net
   = Var NetId Width [Path] AExpr  -- ^ Signal, width, paths, signal expression.
   | Reg NetId Width [Path] NetId  -- ^ Signal, width, paths, associated D-inputs.
+  deriving Show
 
 type Netlist = [Net]
 
 data AExpr
-  = AVar    NetId
+  = AInput
+  | AVar    NetId
   | AConst  Int Integer    -- ^ Width, value.
   | ASelect NetId Int Int  -- ^ LSB is 0.
   | ABWNot  NetId
@@ -47,6 +49,7 @@ data AExpr
   | AGe     NetId NetId
   | AMux    NetId NetId NetId
   | AConcat NetId NetId
+  deriving Show
 
 sortTopo :: Netlist -> Netlist
 sortTopo a = regs ++ [ Var id width paths expr | (id, width, paths, expr) <- f [] regIds vars ]
@@ -55,13 +58,16 @@ sortTopo a = regs ++ [ Var id width paths expr | (id, width, paths, expr) <- f [
   vars = [ (id, width, paths, expr) | Var id width paths expr <- a ]
   f sofar avail rest
     | null rest = sofar
+    | null next = error $ "Combinational loop somewhere in : " ++ unlines (map show l1)  --XXX Not a combinational loop problem.  Variables are references, but not defined in the netlist.
     | otherwise = f (sofar ++ next) (avail ++ [ id | (id, _, _, _) <- next ]) rest'
     where
     (next, rest') = partition p rest
     p (_, _, _, expr) = all (flip elem avail) $ deps expr
+    l1 = sort [ (i, deps e) | (i, _, _, e) <- rest ]
 
   deps :: AExpr -> [NetId]
   deps a = case a of
+    AInput        -> []
     AVar    a     -> [a]
     AConst  _ _   -> []
     ASelect a _ _ -> [a]

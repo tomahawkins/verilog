@@ -1,12 +1,12 @@
 name:    verilog
-version: 0.0.3
+version: 0.1.0
 
 category: Language, Hardware, Embedded
 
-synopsis: A Verilog parser and simulator.
+synopsis: A Verilog parser, netlister, and simulator.
 
 description:
-  A parser and simulator supporting a very small subset of Verilog-95.
+  A parser and simulator supporting a small subset of Verilog-95.
   Intended for machine generated, synthesizable code.
 
 author:     Tom Hawkins <tomahawkins@gmail.com>

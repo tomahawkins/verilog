@@ -10,13 +10,12 @@ import System.IO
 import Text.Printf
 
 import Language.Verilog.AST
-import Language.Verilog.Netlist
+import Language.Verilog.Netlist hiding (Reg)
+import qualified Language.Verilog.Netlist as N
 
--- | Netlist from AST.
+-- | Netlist a collection of modules given a top level module name.
 netlist :: [Module] -> Identifier -> IO Netlist
 netlist modules top = do
-  undefined
-  {-
   cs <- execStateT (compileModule topModule) (CompilerState 0 modules [top] top [] [] False)
   when (hitError cs) exitFailure
   return $ assignments cs
@@ -33,12 +32,12 @@ lookupModule name modules = case [ m | m@(Module n _ _ ) <- modules, name == n ]
 
 
 data CompilerState = CompilerState
-  { nextId      :: Int
+  { nextId      :: NetId
   , modules     :: [Module]
   , path        :: Path
   , moduleName  :: Identifier
-  , assignments :: NetList
-  , environment :: [(Identifier, Var)]
+  , assignments :: Netlist
+  , environment :: [(Identifier, (NetId, Width))]
   , hitError    :: Bool
   }
 
@@ -48,7 +47,7 @@ compileModule :: Module -> VC ()
 compileModule (Module _ _ items) = mapM_ compileModuleItem items
 
 extendEnv :: Int -> Identifier -> VC ()
-extendEnv width name = modify $ \ c -> c { nextId = nextId c + 1, environment = (name, Var (nextId c) width [path c ++ [name]]) : environment c }
+extendEnv width name = modify $ \ c -> c { nextId = nextId c + 1, environment = (name, (nextId c, width)) : environment c }
 
 extendEnv' :: Maybe Range -> [(Identifier, Maybe Range)] -> VC ()
 extendEnv' range vars = mapM_ (f $ width range) vars
@@ -58,39 +57,31 @@ extendEnv' range vars = mapM_ (f $ width range) vars
     Nothing -> extendEnv width var
     Just _  -> error' $ "Arrays not supported: " ++ var
 
-getVar :: Identifier -> VC Var
-getVar a = do
+getNetId :: Identifier -> VC (NetId, Width)
+getNetId a = do
   c <- get
-  getVar' c a
+  getNetId' c a
 
-getVar' :: CompilerState -> Identifier -> VC Var
-getVar' c a = do
+getNetId' :: CompilerState -> Identifier -> VC (NetId, Width)
+getNetId' c a = do
   case lookup a $ environment c of
     Nothing -> do
       error' $ "Variable not found: " ++ a
-      return $ Var 0 0 []
+      return (-1, 0)
     Just a -> return a
 
+-- | Assign an expression to a variable.
 assignVar :: (Identifier, Expr) -> VC ()
 assignVar (v, e) = do
-  c <- get
-  v <- getVar v
+  (i, w) <- getNetId v
   e <- compileExpr e
-  put c { assignments = assignments c ++ [Var v e] }
+  modify $ \ c -> c { assignments = assignments c ++ [Var i w [path c ++ [v]] e] }
 
-assignVar' :: (Var, Expr) -> VC ()
-assignVar' (v, e) = do
-  e <- compileExpr e
-  modify $ \ c -> c { assignments = assignments c ++ [Var v e] }
-
-assignReg :: Identifier -> (Identifier, Expr) -> VC ()
-assignReg clk (q, e) = do
-  c   <- get
-  clk <- getVar clk
-  q@(Var _ w _) <- getVar q
+assignReg :: (Identifier, Expr) -> VC ()
+assignReg (q, e) = do
+  (i, w) <- getNetId q
   e   <- compileExpr e
-  d <- return $ Var (nextId c) w []
-  put c { nextId = nextId c + 1, assignments = assignments c ++ [Var d e, AssignRegQ q d] }
+  modify $ \ c ->c { nextId = nextId c + 1, assignments = assignments c ++ [Var (nextId c) w [] e, N.Reg i w [path c ++ [q]] (nextId c)] }
 
 compileModuleItem :: ModuleItem -> VC ()
 compileModuleItem a = case a of
@@ -118,34 +109,47 @@ compileModuleItem a = case a of
       Nothing -> return () --XXX Need to handle externals.
       Just m -> do
         c0 <- get
-        put c0 { moduleName = mName, path = path c0 ++ [iName], environment = [] }
-        mapM_ (\ (var, w) -> do
-          extendEnv w var
-          case lookup var bindings of
-            Nothing       -> error' $ "Unbound input or parameter: " ++ show var
-            Just Nothing  -> error' $ "Unbound input or parameter: " ++ show var
-            Just (Just e) -> assignVar (var, e)
-          ) $ moduleInputs m
+
+        -- Bind inputs.
+        let env = [ (v, (i, w)) | (i, (v, w)) <- zip [nextId c ..] (moduleInputs m) ]
+        modify $ \ c -> c { nextId = nextId c + length env }
+        mapM_ (bindSubInput iName bindings) env
+
+        -- Compile sub module.
+        modify $ \ c -> c { path = path c ++ [iName], environment = env }
         compileModule m
-        mapM_ (\ (var, w) -> do
-          case lookup var bindings of
-            Nothing      -> return ()
-            Just Nothing -> return ()
-            Just (Just (ExprLHS (LHS v))) -> do
-              v <- getVar' c0 v
-              assignVar' (v, ExprLHS $ LHS var)
-            _ -> error' $ "Invalid output port binding expression: " ++ show var
-          ) outputs
         c1 <- get
-        put c1 { moduleName = moduleName c0, path = path c0, environment = environment c0 }
+        modify $ \ c -> c { path = path c0, environment = environment c0 }
+
+        -- Bind outputs.
+        let outputs' = [ (v, (i, w)) | (v, (i, w)) <- environment c1, elem v outputs ]
+        mapM_ (bindSubOutput iName bindings) outputs'
+
         where
         Module _ _ items = m
-        outputs :: [(String, Int)]
-        outputs = concat [ [ (var, width range) | (var, _) <- vars ] | Output range vars <- items ]
+        outputs :: [Identifier]
+        outputs = concat [ fst $ unzip vars | Output _ vars <- items ]
     where
     bindings = parameters ++ bindings'
 
-moduleInputs :: Module -> [(String, Int)]
+bindSubInput :: Identifier -> [(Identifier, Maybe Expr)] -> (Identifier, (NetId, Width)) -> VC () 
+bindSubInput iName bindings (v, (i, w)) = case lookup v bindings of
+  Nothing       -> error' $ "Unbound input or parameter: " ++ show v
+  Just Nothing  -> error' $ "Unbound input or parameter: " ++ show v
+  Just (Just e) -> do
+    e <- compileExpr e
+    modify $ \ c -> c { assignments = assignments c ++ [Var i w [path c ++ [iName, v]] e] }
+
+bindSubOutput :: Identifier -> [(Identifier, Maybe Expr)] -> (Identifier, (NetId, Width)) -> VC ()
+bindSubOutput iName bindings (v, (i, _)) = case lookup v bindings of
+  Nothing      -> return ()
+  Just Nothing -> return ()
+  Just (Just (ExprLHS (LHS v))) -> do
+    (j, w) <- getNetId v
+    modify $ \ c -> c { assignments = assignments c ++ [Var j w [path c ++ [v]] $ AVar i] }
+  _ -> error' $ "Invalid output port binding expression in instance " ++ show iName ++ ": " ++ show v
+
+moduleInputs :: Module -> [(Identifier, Int)]
 moduleInputs (Module _ _ items) = concat [ [ (var, width range) | (var, _) <- vars ] | Input range vars <- items ] ++
   [ (var, width range) | Parameter range var _ <- items ]
 
@@ -178,7 +182,7 @@ compileCombStmt :: Stmt -> VC ()
 compileCombStmt a = compileStmt False a >>= mapM_ assignVar
 
 compileSeqStmt :: Identifier -> Stmt -> VC ()
-compileSeqStmt clk a = compileStmt True a >>= mapM_ (assignReg clk)
+compileSeqStmt _clk a = compileStmt True a >>= mapM_ assignReg
 
 compileStmt :: Bool -> Stmt -> VC [(Identifier, Expr)]
 compileStmt seq stmt = case stmt of
@@ -273,4 +277,3 @@ error' msg = do
     printf "ERROR   (module: %s) (instance: %s) : %s\n" (moduleName c) (intercalate "." $ path c) msg
     hFlush stdout
   put c { hitError = True }
--}
