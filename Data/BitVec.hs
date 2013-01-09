@@ -49,8 +49,8 @@ bitVec w v = BitVec w' $ v .&. ((2 ^ fromIntegral w') - 1)
   w' = max w 0
 
 -- | Bit seclection.  LSB is 0.
-select :: BitVec -> (Int, Int) -> BitVec
-select (BitVec _ v) (msb, lsb) = bitVec (msb - lsb + 1) $ shiftR v lsb
+select :: BitVec -> (BitVec, BitVec) -> BitVec
+select (BitVec _ v) (msb, lsb) = bitVec (fromIntegral $ value $ msb - lsb + 1) $ shiftR v (fromIntegral $ value $ lsb)
 
 -- | Width of a 'BitVec'.
 width :: BitVec -> Int

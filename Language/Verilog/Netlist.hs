@@ -9,7 +9,10 @@ module Language.Verilog.Netlist
   ) where
 
 import Data.List
+import qualified Data.IntMap as M
+import qualified Data.IntSet as S
 
+import Data.BitVec
 import Language.Verilog.AST (Identifier)
 
 -- | A Path is a hierarchical path of identifiers.
@@ -31,8 +34,8 @@ type Netlist = [Net]
 data AExpr
   = AInput
   | AVar    NetId
-  | AConst  Int Integer    -- ^ Width, value.
-  | ASelect NetId Int Int  -- ^ LSB is 0.
+  | AConst  BitVec
+  | ASelect NetId NetId NetId  -- ^ LSB is 0.
   | ABWNot  NetId
   | ABWAnd  NetId NetId
   | ABWXor  NetId NetId
@@ -40,7 +43,8 @@ data AExpr
   | AMul    NetId NetId
   | AAdd    NetId NetId
   | ASub    NetId NetId
-  | AShift  NetId Int      -- ^ Shift left if positive, right if negative.
+  | AShiftL NetId NetId
+  | AShiftR NetId NetId
   | AEq     NetId NetId
   | ANe     NetId NetId
   | ALt     NetId NetId
@@ -52,39 +56,72 @@ data AExpr
   deriving Show
 
 sortTopo :: Netlist -> Netlist
-sortTopo a = regs ++ [ Var id width paths expr | (id, width, paths, expr) <- f [] regIds vars ]
+sortTopo a
+  | not $ S.null unknownRegDeps = error $ "Netlist contains unknown register dependencies (D input): " ++ show (S.toList unknownRegDeps)
+  | not $ S.null unknownVarDeps = error $ "Netlist contains unknown variable dependencies: "           ++ show (S.toList unknownVarDeps)
+  | otherwise = regs ++ [ Var id width paths expr | (id, width, paths, expr) <- f [] regIds vars ]
   where
-  (regs, regIds) = unzip [ (r, id) | r@(Reg id _ _ _) <- a ]
-  vars = [ (id, width, paths, expr) | Var id width paths expr <- a ]
   f sofar avail rest
-    | null rest = sofar
+    | null rest = reverse sofar
     | null next = error $ "Combinational loop somewhere in :\n" ++ unlines (map show l1)  --XXX Not a combinational loop problem.  Variables are references, but not defined in the netlist.
-    | otherwise = f (sofar ++ next) (avail ++ [ id | (id, _, _, _) <- next ]) rest'
+    | otherwise = f (next ++ sofar) (S.union avail $ S.fromList [ id | (id, _, _, _) <- next ]) rest'
     where
     (next, rest') = partition p rest
-    p (_, _, _, expr) = all (flip elem avail) $ deps expr
-    l1 = sort [ (i, deps e) | (i, _, _, e) <- rest ]
+    p (_, _, _, expr) = all (flip S.member avail) $ deps expr
+    l1 = sort $ removeSinks [ (i, deps e) | (i, _, _, e) <- rest ]
 
-  deps :: AExpr -> [NetId]
-  deps a = case a of
-    AInput        -> []
-    AVar    a     -> [a]
-    AConst  _ _   -> []
-    ASelect a _ _ -> [a]
-    ABWNot  a     -> [a]
-    ABWAnd  a b   -> [a, b]
-    ABWXor  a b   -> [a, b]
-    ABWOr   a b   -> [a, b]
-    AMul    a b   -> [a, b]
-    AAdd    a b   -> [a, b]
-    ASub    a b   -> [a, b]
-    AShift  a _   -> [a]
-    AEq     a b   -> [a, b]
-    ANe     a b   -> [a, b]
-    ALt     a b   -> [a, b]
-    ALe     a b   -> [a, b]
-    AGt     a b   -> [a, b]
-    AGe     a b   -> [a, b]
-    AMux    a b c -> [a, b, c]
-    AConcat a b   -> [a, b]
+  (regs, regDeps) = unzip [ (r, (q, d)) | r@(Reg q _ _ d) <- a ]
+  vars = [ (id, width, paths, expr) | Var id width paths expr <- a ]
+
+  varDeps :: [(Int, [Int])]
+  varDeps = [ (i, deps e) | (i, _, _, e) <- vars ]
+
+  regIds  = S.fromList $ fst $ unzip regDeps
+  varIds  = S.fromList $ fst $ unzip varDeps
+  allIds  = S.union regIds varIds
+
+  unknownRegDeps  = S.difference (S.fromList $ snd $ unzip regDeps) allIds
+  unknownVarDeps  = S.difference (S.fromList $ concat $ snd $ unzip varDeps) allIds
+
+deps :: AExpr -> [NetId]
+deps a = case a of
+  AInput        -> []
+  AVar    a     -> [a]
+  AConst  _     -> []
+  ASelect a b c -> [a, b, c]
+  ABWNot  a     -> [a]
+  ABWAnd  a b   -> [a, b]
+  ABWXor  a b   -> [a, b]
+  ABWOr   a b   -> [a, b]
+  AMul    a b   -> [a, b]
+  AAdd    a b   -> [a, b]
+  ASub    a b   -> [a, b]
+  AShiftL a b   -> [a, b]
+  AShiftR a b   -> [a, b]
+  AEq     a b   -> [a, b]
+  ANe     a b   -> [a, b]
+  ALt     a b   -> [a, b]
+  ALe     a b   -> [a, b]
+  AGt     a b   -> [a, b]
+  AGe     a b   -> [a, b]
+  AMux    a b c -> [a, b, c]
+  AConcat a b   -> [a, b]
+
+{-
+findLoop :: [(Int, [Int])] -> [Int]
+findLoop deps' =
+  where
+  deps = M.fromList deps'
+  f :: [Int] -> [[Int]] -> 
+  f toExplore
+  -}
+
+removeSinks :: [(Int, [Int])] -> [(Int, [Int])]
+removeSinks a
+  | S.null sinks = a
+  | otherwise    = removeSinks [ (a, b) | (a, b) <- a, not $ S.member a sinks ]
+  where
+  nodes = S.fromList $ fst $ unzip a
+  deps  = S.fromList $ concat $ snd $ unzip a
+  sinks = S.difference nodes deps
 

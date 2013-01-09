@@ -142,9 +142,9 @@ data LHS
 
 instance Show LHS where
   show a = case a of
-    LHS        a -> a
-    LHSBit     a b   -> printf "%s[%s]" (show a) (show b)
-    LHSRange   a (b, c) -> printf "%s[%s:%s]" (show a) (show b) (show c)
+    LHS        a        -> a
+    LHSBit     a b      -> printf "%s[%s]"    a (show b)
+    LHSRange   a (b, c) -> printf "%s[%s:%s]" a (show b) (show c)
 
 data Stmt
   = Block                 (Maybe Identifier) [Stmt]

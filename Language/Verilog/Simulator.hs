@@ -17,6 +17,8 @@ import qualified Data.VCD as VCD
 import Data.BitVec
 import Language.Verilog.Netlist
 
+check msg = putStrLn msg >> hFlush stdout
+
 -- | A Simulator executes 'SimCommand's.
 type Simulator = SimCommand -> IO (Maybe SimResponse)
 
@@ -133,8 +135,8 @@ step netlist memory sample = do
     Var i _ _ expr -> case expr of
       AInput        -> return ()
       AVar    a     -> read a >>= write
-      AConst  w v   -> write $ bitVec w v
-      ASelect a b c -> read a >>= write . flip select (b, c)
+      AConst  a     -> write a
+      ASelect a b c -> do { a <- read a; b <- read b; c <- read c; write $ select a (b, c) }
       ABWNot  a     -> read a >>= write . complement
       ABWAnd  a b   -> do { a <- read a; b <- read b; write $ a .&. b }
       ABWXor  a b   -> do { a <- read a; b <- read b; write $ a `xor` b }
@@ -142,7 +144,8 @@ step netlist memory sample = do
       AMul    a b   -> do { a <- read a; b <- read b; write $ a * b }
       AAdd    a b   -> do { a <- read a; b <- read b; write $ a + b }
       ASub    a b   -> do { a <- read a; b <- read b; write $ a - b }
-      AShift  a b   -> do { a <- read a; write $ shift a b }
+      AShiftL a b   -> do { a <- read a; b <- read b; write $ shiftL a $ fromIntegral $ value b }
+      AShiftR a b   -> do { a <- read a; b <- read b; write $ shiftR a $ fromIntegral $ value b }
       AEq     a b   -> do { a <- read a; b <- read b; write $ bitVec 1 (if value a == value b then 1 else 0) }
       ANe     a b   -> do { a <- read a; b <- read b; write $ bitVec 1 (if value a /= value b then 1 else 0) }
       ALt     a b   -> do { a <- read a; b <- read b; write $ bitVec 1 (if value a <  value b then 1 else 0) }
