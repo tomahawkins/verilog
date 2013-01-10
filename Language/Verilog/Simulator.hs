@@ -5,6 +5,7 @@ module Language.Verilog.Simulator
   , simulator
   ) where
 
+import Control.Monad (when)
 import Data.Array.IO
 import Data.Bits
 import Data.IORef
@@ -17,24 +18,22 @@ import qualified Data.VCD as VCD
 import Data.BitVec
 import Language.Verilog.Netlist
 
-check msg = putStrLn msg >> hFlush stdout
+--check msg = putStrLn msg >> hFlush stdout
 
 -- | A Simulator executes 'SimCommand's.
 type Simulator = SimCommand -> IO (Maybe SimResponse)
 
 -- | Simulation commands.
 data SimCommand
-  = Init         (Maybe FilePath)  -- ^ Initalize
+  = Init         (Maybe FilePath)
   | Step
   | GetSignalId  Path
   | GetSignal    NetId
-  | GetInputId   Path
-  | SetInput     NetId BitVec  -- ^ All output-to-input paths must be sequential.  Inputs are registered at the begining of the next step.
   | Close
 
 -- | Simulation responses.
 data SimResponse
-  = Id    NetId  -- ^ Response to GetSignalId and GetInputId.
+  = Id    NetId  -- ^ Response to GetSignalId.
   | Value BitVec -- ^ Response to GetSignal.
 
 -- | Builds a 'Simulator' given a 'Netlist'.
@@ -46,13 +45,11 @@ simulator netlist' = do
   memory      <- memory netlist
   step        <- step netlist memory sample
   return $ \ cmd -> case cmd of
-    Init        file     -> initialize netlist memory vcd file sample
-    Step                 -> step >> return Nothing
-    GetSignalId path     -> return $ getSignalId netlist path
-    GetSignal   id       -> readArray memory id        >>= return . Just . Value
-    GetInputId  path     -> return $ getInputId netlist path
-    SetInput    id value -> writeArray memory id value >>  return Nothing
-    Close                -> close vcd sample >>  return Nothing
+    Init        file -> initialize netlist memory vcd file sample
+    Step             -> step >> return Nothing
+    GetSignalId path -> return $ getSignalId netlist path
+    GetSignal   id   -> readArray memory id        >>= return . Just . Value
+    Close            -> close vcd sample >>  return Nothing
 
 getSignalId :: Netlist -> Path -> Maybe SimResponse
 getSignalId netlist path = case lookup path paths' of
@@ -60,14 +57,6 @@ getSignalId netlist path = case lookup path paths' of
   Just i  -> Just $ Id i
   where
   paths = [ (paths, id) | Reg id _ paths _ <- netlist ] ++ [ (paths, id) | Var id _ paths _ <- netlist ] 
-  paths' = [ (path, id) | (paths, id) <- paths, path <- paths ]
-
-getInputId :: Netlist -> Path -> Maybe SimResponse
-getInputId netlist path = case lookup path paths' of
-  Nothing -> Nothing
-  Just i  -> Just $ Id i
-  where
-  paths = [ (paths, id) | Reg _ _ paths id <- netlist ]
   paths' = [ (path, id) | (paths, id) <- paths, path <- paths ]
 
 type Memory = IOArray Int BitVec
@@ -111,6 +100,12 @@ initializeNet memory a = case a of
   Var i w _ _ -> writeArray memory i $ bitVec w 0
   Reg i w _ _ -> writeArray memory i $ bitVec w 0
 
+writeMemory :: Memory -> Int -> BitVec -> IO ()
+writeMemory memory i a = do
+  b <- readArray memory i
+  when (width b /= width a) $ error $ "Memory update with different bit-vector width:  index: " ++ show i ++ "  old: " ++ show b ++ "  new: " ++ show a
+  writeArray memory i a
+
 close :: IORef (Maybe VCDHandle) -> IORef (IO ()) -> IO ()
 close vcd sample = do
   vcd' <- readIORef vcd
@@ -127,8 +122,8 @@ step netlist memory sample = do
     sequence_ steps
     readIORef sample >>= id
   where
-  read  = readArray memory
-  write' = writeArray memory
+  read   = readArray memory
+  write' = writeMemory memory
   stepNet :: Net -> IO ()
   stepNet a = case a of
     Reg q _ _ d -> read d >>= write' q

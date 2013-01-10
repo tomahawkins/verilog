@@ -9,7 +9,6 @@ module Language.Verilog.Netlist
   ) where
 
 import Data.List
-import qualified Data.IntMap as M
 import qualified Data.IntSet as S
 
 import Data.BitVec

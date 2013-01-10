@@ -1,6 +1,6 @@
 module Language.Verilog.NetlistConvert
-  ( netlist
-  , BlackBoxInterface
+  ( BlackBox (..)
+  , netlist
   ) where
 
 import Control.Monad
@@ -17,10 +17,20 @@ import Language.Verilog.AST
 import Language.Verilog.Netlist hiding (Reg)
 import qualified Language.Verilog.Netlist as N
 
+type Parameters = [PortBinding]
+
+-- | Details of blackboxes.
+data BlackBox = BlackBox
+  { bboxModule         :: Identifier
+  , bboxInputs         :: Parameters -> [(Identifier, Width)]
+  , bboxOutputs        :: Parameters -> [(Identifier, Width)]
+  , bboxImplementation :: Parameters -> Path -> IO ([BitVec] -> IO [BitVec])  -- ^ Signal order determined by bboxInputs and bboxOutputs.
+  }
+
 data CompilerState = CompilerState
   { nextId      :: NetId
   , modules     :: [Module]
-  , blackBoxes  :: [(Path, BlackBoxInterface)]
+  , blackBoxes  :: [BlackBox]
   , path        :: Path
   , moduleName  :: Identifier
   , nets        :: Netlist
@@ -31,28 +41,39 @@ data CompilerState = CompilerState
 type VC = StateT CompilerState IO
 
 checkN :: Int -> String -> VC ()
-checkN n msg = return () {-do
+checkN _n _msg = return () {-do
   c <- get
   liftIO $ when (nextId c == n) $ do
     putStrLn $ "(instance: " ++ intercalate "." (path c) ++ "): " ++ msg
     hFlush stdout
     -}
 
--- | Lists of inputs and outputs.
-type BlackBoxInterface = ([(Identifier, Width)], [(Identifier, Width)])
-
--- | Netlist a collection of modules given a top level module name and a mapping of external instance sub-outputs.
-netlist :: [Module] -> Identifier -> [(Path, BlackBoxInterface)] -> IO Netlist
+-- | Netlist a design given a list of modules, the top level module name, and all 'BlackBox' implementations.
+--   The top level module must not have any ports.
+netlist :: [Module] -> Identifier -> [BlackBox] -> IO Netlist
 netlist modules top blackBoxes = do
-  cs <- execStateT (compileModule topModule) $ initialCompilerState modules top blackBoxes topModule
-  when (hitError cs) exitFailure
-  return $ nets cs
+  c <- execStateT (checkTopModule topModule >> compileModule topModule) CompilerState
+    { nextId      = 0
+    , modules     = modules
+    , blackBoxes  = blackBoxes
+    , path        = [top]
+    , moduleName  = top
+    , nets        = []
+    , environment = []
+    , hitError    = False
+    }
+  when (hitError c) exitFailure
+  return $ nets c
   where
   topModule = case lookupModule top modules of
     Nothing -> error $ "Top module not found: " ++ top
     Just m  -> m
 
-initialCompilerState :: [Module] -> Identifier -> [(Path, BlackBoxInterface)] -> Module -> CompilerState
+checkTopModule :: Module -> VC ()
+checkTopModule m = when (not $ null $ moduleInputs m) $ error' "Top level module has IO."
+
+{-
+initialCompilerState :: [Module] -> Identifier -> [BlackBox] -> Module -> CompilerState
 initialCompilerState modules top blackBoxes topModule  = CompilerState
   { nextId      = length inputs * 2
   , modules     = modules
@@ -67,6 +88,7 @@ initialCompilerState modules top blackBoxes topModule  = CompilerState
   }
   where
   inputs = moduleInputs topModule
+-}
 
 lookupModule :: Identifier -> [Module] -> Maybe Module
 lookupModule name modules = case [ m | m@(Module n _ _ ) <- modules, name == n ] of
@@ -136,22 +158,29 @@ compileModuleItem a = case a of
   Assign _ _ -> error' $ "Invalid assignment: " ++ show a
 
   Instance mName parameters iName bindings' -> do
-    c <- get 
-    case lookupModule mName $ modules c of
-      Nothing -> case lookup (path c ++ [iName]) $ blackBoxes c of
-        Nothing -> error' $ "Unknown blackbox:  module: " ++ mName ++ "  instance: " ++ intercalate "." (path c ++ [iName])
-        Just (inputs, outputs) -> return () --XXX Need to handle externals.
+    c0 <- get 
+    let path' = path c0 ++ [iName]
+    case lookupModule mName $ modules c0 of
+      Nothing -> case [ bbox | bbox <- blackBoxes c0, bboxModule bbox == mName ] of
+        []        -> error' $ "Unknown blackbox:  module: " ++ mName ++ "  instance: " ++ intercalate "." path'
+        _ : _ : _ -> error' $ "Multiple blackboxes with same name:  module: " ++ mName ++ "  instance: " ++ intercalate "." path'
+        [bbox] -> do
+          modify $ \ c -> c { moduleName = mName, path = path' }
+          --XXX Need to check that all inputs are bound.
+          impl <- liftIO $ bboxImplementation bbox parameters path'
+          modify $ \ c -> c { moduleName = moduleName c0, path = path c0 }
+          where
+          inputs  = bboxInputs  bbox parameters
+          outputs = bboxOutputs bbox parameters
 
       Just m -> do
-        c0 <- get
-
         -- Bind inputs.
-        let env = [ (v, (i, w)) | (i, (v, w)) <- zip [nextId c ..] (moduleInputs m) ]
+        let env = [ (v, (i, w)) | (i, (v, w)) <- zip [nextId c0 ..] (moduleInputs m) ]
         modify $ \ c -> c { nextId = nextId c + length env }
         mapM_ (bindSubInput iName bindings) env
 
         -- Compile sub module.
-        modify $ \ c -> c { moduleName = mName, path = path c ++ [iName], environment = env }
+        modify $ \ c -> c { moduleName = mName, path = path', environment = env }
         compileModule m
         c1 <- get
         modify $ \ c -> c { moduleName = moduleName c0, path = path c0, environment = environment c0 }
@@ -362,11 +391,11 @@ error' msg = do
     hFlush stdout
   put c { hitError = True }
 
-check :: String -> VC ()
-check msg = do
+note :: String -> VC ()
+note msg = do
   c <- get
   liftIO $ do
-    printf "Check (module: %s) (instance: %s) : %s\n" (moduleName c) (intercalate "." $ path c) msg
+    printf "Note    (module: %s) (instance: %s) : %s\n" (moduleName c) (intercalate "." $ path c) msg
     hFlush stdout
 
 

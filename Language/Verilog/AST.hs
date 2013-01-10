@@ -7,6 +7,7 @@ module Language.Verilog.AST
   , Expr       (..)
   , Sense      (..)
   , Call       (..)
+  , PortBinding
   , Case
   , Range
   ) where
@@ -36,8 +37,10 @@ data ModuleItem
   | Initial    Stmt
   | Always     Sense Stmt
   | Assign     LHS Expr
-  | Instance   Identifier [(Identifier, Maybe Expr)] Identifier [(Identifier, Maybe Expr)]
+  | Instance   Identifier [PortBinding] Identifier [PortBinding]
   deriving Eq
+
+type PortBinding = (Identifier, Maybe Expr)
 
 instance Show ModuleItem where
   show a = case a of
