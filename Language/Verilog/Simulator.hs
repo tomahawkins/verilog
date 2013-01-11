@@ -66,10 +66,10 @@ memory netlist
   | null netlist = error "Empty netlist, nothing to simulate."
   | otherwise    = newArray (0, maximum ids) 0
   where
-  ids = map f netlist
+  ids = concatMap f netlist
   f a = case a of
-    Var a _ _ _ -> a
-    Reg a _ _ _ -> a
+    Var  a _ _ _ -> [a]
+    Reg  a _ _ _ -> [a]
 
 initialize :: Netlist -> Memory -> IORef (Maybe VCDHandle) -> Maybe FilePath -> IORef (IO ()) -> IO (Maybe SimResponse)
 initialize netlist memory vcd file sample = do
@@ -97,8 +97,8 @@ initialize netlist memory vcd file sample = do
 
 initializeNet :: Memory -> Net -> IO ()
 initializeNet memory a = case a of
-  Var i w _ _ -> writeArray memory i $ bitVec w 0
-  Reg i w _ _ -> writeArray memory i $ bitVec w 0
+  Var  i w _ _ -> writeArray memory i $ bitVec w 0
+  Reg  i w _ _ -> writeArray memory i $ bitVec w 0
 
 writeMemory :: Memory -> Int -> BitVec -> IO ()
 writeMemory memory i a = do

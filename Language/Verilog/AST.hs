@@ -16,6 +16,8 @@ import Data.List
 import Data.Maybe
 import Text.Printf
 
+import Data.BitVec
+
 type Identifier = String
 
 data Module = Module Identifier [Identifier] [ModuleItem] deriving Eq
@@ -77,7 +79,7 @@ unlines' = intercalate "\n"
 
 data Expr
   = String     String
-  | Number     String
+  | Number     BitVec
   | ConstBool  Bool
   | ExprLHS    LHS
   | ExprCall   Call
@@ -109,7 +111,7 @@ data Expr
 instance Show Expr where
   show a = case a of
     String     a -> printf "\"%s\"" a
-    Number     a -> a
+    Number     a -> printf "%d'd%d" (width a) (value a)
     ConstBool  a -> printf "1'b%s" (if a then "1" else "0")
     ExprLHS    a -> show a
     ExprCall   a -> show a
@@ -158,7 +160,7 @@ data Stmt
   | For                   (Identifier, Expr) Expr (Identifier, Expr) Stmt
   | If                    Expr Stmt Stmt
   | StmtCall              Call
-  | Delay                 String Stmt
+  | Delay                 BitVec Stmt
   | Null
   deriving Eq
 
@@ -177,7 +179,7 @@ instance Show Stmt where
     If                    a b Null          -> printf "if (%s)\n%s"           (show a) (indent $ show b)
     If                    a b c             -> printf "if (%s)\n%s\nelse\n%s" (show a) (indent $ show b) (indent $ show c)
     StmtCall              a                 -> printf "%s;" (show a)
-    Delay                 a b               -> printf "#%s %s" a (show b)
+    Delay                 a b               -> printf "#%d %s" (value a) (show b)
     Null                                    -> ";"
 
 type Case = ([Expr], Stmt)

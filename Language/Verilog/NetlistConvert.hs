@@ -5,7 +5,6 @@ module Language.Verilog.NetlistConvert
 
 import Control.Monad
 import Control.Monad.State
-import Data.Bits
 import Data.List
 import System.Exit
 import System.IO
@@ -28,14 +27,15 @@ data BlackBox = BlackBox
   }
 
 data CompilerState = CompilerState
-  { nextId      :: NetId
-  , modules     :: [Module]
-  , blackBoxes  :: [BlackBox]
-  , path        :: Path
-  , moduleName  :: Identifier
-  , nets        :: Netlist
-  , environment :: [(Identifier, (NetId, Width))]
-  , hitError    :: Bool
+  { nextId        :: NetId
+  , modules       :: [Module]
+  , blackBoxDefs  :: [BlackBox]
+  , blackBoxImpls :: [([NetId], [NetId], IO ([BitVec] -> IO [BitVec]))]
+  , path          :: Path
+  , moduleName    :: Identifier
+  , nets          :: Netlist
+  , environment   :: [(Identifier, (NetId, Width))]
+  , hitError      :: Bool
   }
 
 type VC = StateT CompilerState IO
@@ -53,14 +53,15 @@ checkN _n _msg = return () {-do
 netlist :: [Module] -> Identifier -> [BlackBox] -> IO Netlist
 netlist modules top blackBoxes = do
   c <- execStateT (checkTopModule topModule >> compileModule topModule) CompilerState
-    { nextId      = 0
-    , modules     = modules
-    , blackBoxes  = blackBoxes
-    , path        = [top]
-    , moduleName  = top
-    , nets        = []
-    , environment = []
-    , hitError    = False
+    { nextId        = 0
+    , modules       = modules
+    , blackBoxDefs  = blackBoxes
+    , blackBoxImpls = []
+    , path          = [top]
+    , moduleName    = top
+    , nets          = []
+    , environment   = []
+    , hitError      = False
     }
   when (hitError c) exitFailure
   return $ nets c
@@ -71,24 +72,6 @@ netlist modules top blackBoxes = do
 
 checkTopModule :: Module -> VC ()
 checkTopModule m = when (not $ null $ moduleInputs m) $ error' "Top level module has IO."
-
-{-
-initialCompilerState :: [Module] -> Identifier -> [BlackBox] -> Module -> CompilerState
-initialCompilerState modules top blackBoxes topModule  = CompilerState
-  { nextId      = length inputs * 2
-  , modules     = modules
-  , blackBoxes  = blackBoxes
-  , path        = [top]
-  , moduleName  = top
-  , nets        = concat [ [Var i w [] AInput, N.Reg j w [[top, n]] i]
-                         | (i, j, (n, w)) <- zip3 [0, 2 ..] [1, 3 ..] inputs
-                         ]
-  , environment = [ (n, (i, w)) | (i, (n, w)) <- zip [1, 3 ..] inputs ]
-  , hitError    = False
-  }
-  where
-  inputs = moduleInputs topModule
--}
 
 lookupModule :: Identifier -> [Module] -> Maybe Module
 lookupModule name modules = case [ m | m@(Module n _ _ ) <- modules, name == n ] of
@@ -161,18 +144,40 @@ compileModuleItem a = case a of
     c0 <- get 
     let path' = path c0 ++ [iName]
     case lookupModule mName $ modules c0 of
-      Nothing -> case [ bbox | bbox <- blackBoxes c0, bboxModule bbox == mName ] of
+
+      -- Blackbox instantiation.
+      Nothing -> case [ bbox | bbox <- blackBoxDefs c0, bboxModule bbox == mName ] of
         []        -> error' $ "Unknown blackbox:  module: " ++ mName ++ "  instance: " ++ intercalate "." path'
         _ : _ : _ -> error' $ "Multiple blackboxes with same name:  module: " ++ mName ++ "  instance: " ++ intercalate "." path'
         [bbox] -> do
           modify $ \ c -> c { moduleName = mName, path = path' }
-          --XXX Need to check that all inputs are bound.
-          impl <- liftIO $ bboxImplementation bbox parameters path'
-          modify $ \ c -> c { moduleName = moduleName c0, path = path c0 }
+          inputs  <- mapM input  $ bboxInputs  bbox parameters
+          outputs <- mapM output $ bboxOutputs bbox parameters
+          let impl = bboxImplementation bbox parameters path'
+          modify $ \ c -> c { moduleName = moduleName c0, path = path c0, blackBoxImpls = (inputs, outputs, impl) : blackBoxImpls c }
           where
-          inputs  = bboxInputs  bbox parameters
-          outputs = bboxOutputs bbox parameters
+          input :: (Identifier, Width) -> VC NetId
+          input (a, _) = case lookup a bindings of
+            Nothing      -> error' ("Unbound input: " ++ a) >> return 0
+            Just Nothing -> error' ("Unbound input: " ++ a) >> return 0
+            Just (Just e) -> do
+              (e, _) <- compileExpr e
+              return e
 
+          output :: (Identifier, Width) -> VC NetId
+          output (a, w) = do
+            c <- get
+            put c { nextId = nextId c + 1, nets = Var (nextId c) w [path c ++ [a]] AInput : nets c }
+            case lookup a bindings of
+              Nothing       -> return ()
+              Just Nothing  -> return ()
+              Just (Just (ExprLHS (LHS v))) -> do
+                (n, _) <- getNetId' c0 v
+                modify $ \ c -> c { nets = Var n w [init (path c) ++ [v]] (AVar (nextId c)) : nets c }
+              Just (Just e) -> error' $ "Invalid output port binding expression in instance " ++ show iName ++ ": " ++ show e
+            return $ nextId c
+
+      -- Regular module instanitation.
       Just m -> do
         -- Bind inputs.
         let env = [ (v, (i, w)) | (i, (v, w)) <- zip [nextId c0 ..] (moduleInputs m) ]
@@ -220,7 +225,7 @@ moduleInputs (Module _ _ items) = concat [ [ (var, width range) | (var, _) <- va
 width :: Maybe Range -> Int
 width a = case a of
   Nothing -> 1
-  Just (Number msb, Number "0") -> read msb + 1
+  Just (Number msb, Number lsb) | value lsb == 0 -> fromIntegral $ value msb + 1
   Just r -> error $ "Invalid range in variable declaration: " ++ show r
 
 data SenseType = Combinational | Posedge Identifier | Negedge Identifier
@@ -276,12 +281,12 @@ compileStmt seq stmt = case stmt of
         | seq       -> return (v, Mux pred a                 (ExprLHS $ LHS v))
         | otherwise -> do
             warning $ printf "Branch in combinational always block is missing assignment for variable %s.  Assigning to zero." v
-            return (v, Mux pred a $ Number "0")
+            return (v, Mux pred a $ Number 0)
       (Nothing, Just b )
         | seq -> return (v, Mux pred (ExprLHS $ LHS v) b                )
         | otherwise -> do
             warning $ printf "Branch in combinational always block is missing assignment for variable %s.  Assigning to zero." v
-            return (v, Mux pred b $ Number "0")
+            return (v, Mux pred b $ Number 0)
 
   Null -> return []
   _ -> do
@@ -293,7 +298,7 @@ compileExpr expr = case expr of
   {-
   String     String
   -}
-  Number a -> net (BV.width n) (AConst n) where n = number a
+  Number a -> net (BV.width a) (AConst a)
   ConstBool  a -> net 1 $ AConst $ if a then 1 else 0
   ExprLHS (LHS v) -> do
     (v, w) <- getNetId v
@@ -310,9 +315,9 @@ compileExpr expr = case expr of
   {-
   ExprCall   Call
   -}
-  Not   a   -> anf $ Eq a $ Number "0"
-  And   a b -> anf $ BWAnd (Ne a $ Number "0") (Ne b $ Number "0")
-  Or    a b -> anf $ BWOr  (Ne a $ Number "0") (Ne b $ Number "0")
+  Not   a   -> anf $ Eq a $ Number 0
+  And   a b -> anf $ BWAnd (Ne a $ Number 0) (Ne b $ Number 0)
+  Or    a b -> anf $ BWOr  (Ne a $ Number 0) (Ne b $ Number 0)
   BWNot a   -> do { (a, wa) <- anf a;                   net      wa     $ ABWNot a   }
   BWAnd a b -> do { (a, wa) <- anf a; (b, wb) <- anf b; net (max wa wb) $ ABWAnd a b }
   BWXor a b -> do { (a, wa) <- anf a; (b, wb) <- anf b; net (max wa wb) $ ABWXor a b }
@@ -337,7 +342,7 @@ compileExpr expr = case expr of
     (b, wb) <- anf b
     (c, wc) <- anf c
     net (max wb wc) $ AMux a b c 
-  Repeat (Number a) b -> anf $ Concat $ replicate (fromIntegral $ value $ number a) b'
+  Repeat (Number a) b -> anf $ Concat $ replicate (fromIntegral $ value a) b'
     where
     b' = Concat b
   Concat a -> case a of
@@ -361,21 +366,6 @@ compileExpr expr = case expr of
     put c { nextId = nextId c + 1, nets = Var (nextId c) w [] a : nets c }
     return (nextId c, w)
 
-number :: String -> BitVec
-number a
-  | all (flip elem ['0' .. '9']) a = fromInteger $ read a
-  | head a == '\''                 = fromInteger $ f a
-  | isInfixOf  "'"  a              = bitVec (read w) (f b)
-  | otherwise                      = error $ "Invalid number format: " ++ a
-  where
-  w = takeWhile (/= '\'') a
-  b = dropWhile (/= '\'') a
-  f a 
-    | isPrefixOf "'d" a = read $ drop 2 a
-    | isPrefixOf "'h" a = read $ "0x" ++ drop 2 a
-    | isPrefixOf "'b" a = foldl (\ n b -> shiftL n 1 .|. (if b == '1' then 1 else 0)) 0 (drop 2 a)
-    | otherwise         = error $ "Invalid number format: " ++ a
-
 warning :: String -> VC ()
 warning msg = do
   c <- get
@@ -391,11 +381,13 @@ error' msg = do
     hFlush stdout
   put c { hitError = True }
 
+{-
 note :: String -> VC ()
 note msg = do
   c <- get
   liftIO $ do
     printf "Note    (module: %s) (instance: %s) : %s\n" (moduleName c) (intercalate "." $ path c) msg
     hFlush stdout
+    -}
 
 

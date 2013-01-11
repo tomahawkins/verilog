@@ -2,8 +2,11 @@ module Language.Verilog.Parser
   ( parseFile
   ) where
 
+import Data.Bits hiding (bit)
+import Data.List
 import Text.ParserCombinators.Poly.Plain
 
+import Data.BitVec
 import Language.Verilog.AST
 import Language.Verilog.Parser.Tokens
 import Language.Verilog.Parser.Lex
@@ -53,8 +56,23 @@ declarations = commaList declaration
 string :: Verilog String
 string = satisfy (\ (Token t _ _) -> t == Lit_string ) >>= return . tail . init . tokenString
 
-number :: Verilog String
-number = satisfy (\ (Token t _ _) -> t == Lit_number) >>= return . tokenString
+number :: Verilog BitVec
+number = satisfy (\ (Token t _ _) -> t == Lit_number) >>= return . number . tokenString
+  where
+  number :: String -> BitVec
+  number a
+    | all (flip elem ['0' .. '9']) a = fromInteger $ read a
+    | head a == '\''                 = fromInteger $ f a
+    | isInfixOf  "'"  a              = bitVec (read w) (f b)
+    | otherwise                      = error $ "Invalid number format: " ++ a
+    where
+    w = takeWhile (/= '\'') a
+    b = dropWhile (/= '\'') a
+    f a 
+      | isPrefixOf "'d" a = read $ drop 2 a
+      | isPrefixOf "'h" a = read $ "0x" ++ drop 2 a
+      | isPrefixOf "'b" a = foldl (\ n b -> shiftL n 1 .|. (if b == '1' then 1 else 0)) 0 (drop 2 a)
+      | otherwise         = error $ "Invalid number format: " ++ a
 
 modules :: Verilog [Module]
 modules = do { m <- many module_; eof; return m }

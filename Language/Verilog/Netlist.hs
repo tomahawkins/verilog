@@ -24,8 +24,8 @@ type Width  = Int
 
 -- | A sequence of variable assignments and memory updates in A-normal form.
 data Net
-  = Var NetId Width [Path] AExpr  -- ^ Signal, width, paths, signal expression.
-  | Reg NetId Width [Path] NetId  -- ^ Signal, width, paths, associated D-inputs.
+  = Var  NetId Width [Path] AExpr  -- ^ Signal, width, paths, signal expression.
+  | Reg  NetId Width [Path] NetId  -- ^ Signal, width, paths, associated D-inputs.
   deriving Show
 
 type Netlist = [Net]
