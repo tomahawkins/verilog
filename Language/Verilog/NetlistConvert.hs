@@ -23,17 +23,17 @@ data BlackBox = BlackBox
   { bboxModule         :: Identifier
   , bboxInputs         :: Parameters -> [(Identifier, Width)]
   , bboxOutputs        :: Parameters -> [(Identifier, Width)]
-  , bboxImplementation :: Parameters -> Path -> IO ([BitVec] -> IO [BitVec])  -- ^ Signal order determined by bboxInputs and bboxOutputs.
+  , bboxImplementation :: Parameters -> Path -> BlackBoxInit  -- ^ Signal order determined by bboxInputs and bboxOutputs.
   }
 
 data CompilerState = CompilerState
   { nextId        :: NetId
   , modules       :: [Module]
   , blackBoxDefs  :: [BlackBox]
-  , blackBoxImpls :: [([NetId], [NetId], IO ([BitVec] -> IO [BitVec]))]
+  , blackBoxImpls :: [([NetId], [NetId], BlackBoxInit)]
   , path          :: Path
   , moduleName    :: Identifier
-  , nets          :: Netlist
+  , nets          :: Netlist BlackBoxInit
   , environment   :: [(Identifier, (NetId, Width))]
   , hitError      :: Bool
   }
@@ -50,7 +50,7 @@ checkN _n _msg = return () {-do
 
 -- | Netlist a design given a list of modules, the top level module name, and all 'BlackBox' implementations.
 --   The top level module must not have any ports.
-netlist :: [Module] -> Identifier -> [BlackBox] -> IO Netlist
+netlist :: [Module] -> Identifier -> [BlackBox] -> IO (Netlist BlackBoxInit)
 netlist modules top blackBoxes = do
   c <- execStateT (checkTopModule topModule >> compileModule topModule) CompilerState
     { nextId        = 0

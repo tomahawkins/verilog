@@ -37,21 +37,21 @@ data SimResponse
   | Value BitVec -- ^ Response to GetSignal.
 
 -- | Builds a 'Simulator' given a 'Netlist'.
-simulator :: Netlist -> IO Simulator
+simulator :: Netlist BlackBoxInit -> IO Simulator
 simulator netlist' = do
   let netlist = sortTopo netlist'
-  vcd         <- newIORef Nothing
-  sample      <- newIORef $ return ()
-  memory      <- memory netlist
-  step        <- step netlist memory sample
+  memory <- memory netlist
+  vcd    <- newIORef Nothing
+  sample <- newIORef $ return ()
+  step   <- newIORef $ return ()
   return $ \ cmd -> case cmd of
-    Init        file -> initialize netlist memory vcd file sample
-    Step             -> step >> return Nothing
+    Init        file -> initialize netlist memory vcd file sample step
+    Step             -> readIORef step >>= id >> return Nothing
     GetSignalId path -> return $ getSignalId netlist path
-    GetSignal   id   -> readArray memory id        >>= return . Just . Value
-    Close            -> close vcd sample >>  return Nothing
+    GetSignal   id   -> readArray memory id >>= return . Just . Value
+    Close            -> close vcd sample step >> return Nothing
 
-getSignalId :: Netlist -> Path -> Maybe SimResponse
+getSignalId :: Netlist BlackBoxInit -> Path -> Maybe SimResponse
 getSignalId netlist path = case lookup path paths' of
   Nothing -> Nothing
   Just i  -> Just $ Id i
@@ -61,7 +61,7 @@ getSignalId netlist path = case lookup path paths' of
 
 type Memory = IOArray Int BitVec
 
-memory :: Netlist -> IO Memory
+memory :: Netlist BlackBoxInit -> IO Memory
 memory netlist
   | null netlist = error "Empty netlist, nothing to simulate."
   | otherwise    = newArray (0, maximum ids) 0
@@ -70,10 +70,11 @@ memory netlist
   f a = case a of
     Var  a _ _ _ -> [a]
     Reg  a _ _ _ -> [a]
+    BBox _ _ _   -> []
 
-initialize :: Netlist -> Memory -> IORef (Maybe VCDHandle) -> Maybe FilePath -> IORef (IO ()) -> IO (Maybe SimResponse)
-initialize netlist memory vcd file sample = do
-  close vcd sample
+initialize :: Netlist BlackBoxInit -> Memory -> IORef (Maybe VCDHandle) -> Maybe FilePath -> IORef (IO ()) -> IORef (IO ()) -> IO (Maybe SimResponse)
+initialize netlist memory vcd file sample step = do
+  close vcd sample step
   mapM_ (initializeNet memory) netlist 
   case file of
     Nothing -> return ()
@@ -83,49 +84,49 @@ initialize netlist memory vcd file sample = do
       writeIORef vcd $ Just vcd'
       writeIORef sample $ VCD.step vcd' 1
       mapM_ (f memory vcd' sample) netlist
+  netlist <- mapM initializeBBox netlist
+  initializeStep netlist memory sample step
   return Nothing
   where
-  f :: Memory -> VCDHandle -> IORef (IO ()) -> Net -> IO ()
-  f memory vcd sample a = mapM_ (\ signal -> do
-    sample' <- var vcd signal $ bitVec width 0
-    modifyIORef sample (>> (readArray memory i >>= sample'))
-    ) signals
+  f :: Memory -> VCDHandle -> IORef (IO ()) -> Net BlackBoxInit -> IO ()
+  f memory vcd sample a = case a of
+    BBox _ _ _ -> return ()
+    _ -> mapM_ (\ signal -> do
+      sample' <- var vcd signal $ bitVec width 0
+      modifyIORef sample (>> (readArray memory i >>= sample'))
+      ) signals
     where
     (i, width, signals) = case a of
       Reg i w p _ -> (i, w, p)
       Var i w p _ -> (i, w, p)
+      BBox _ _ _ -> undefined
 
-initializeNet :: Memory -> Net -> IO ()
+initializeNet :: Memory -> Net BlackBoxInit -> IO ()
 initializeNet memory a = case a of
   Var  i w _ _ -> writeArray memory i $ bitVec w 0
   Reg  i w _ _ -> writeArray memory i $ bitVec w 0
+  BBox _ _ _   -> return ()
 
-writeMemory :: Memory -> Int -> BitVec -> IO ()
-writeMemory memory i a = do
-  b <- readArray memory i
-  when (width b /= width a) $ error $ "Memory update with different bit-vector width:  index: " ++ show i ++ "  old: " ++ show b ++ "  new: " ++ show a
-  writeArray memory i a
+initializeBBox :: Net BlackBoxInit -> IO (Net BlackBoxStep)
+initializeBBox a = case a of
+  Var a b c d -> return $ Var a b c d
+  Reg a b c d -> return $ Reg a b c d
+  BBox i o init -> init >>= return . BBox i o
 
-close :: IORef (Maybe VCDHandle) -> IORef (IO ()) -> IO ()
-close vcd sample = do
-  vcd' <- readIORef vcd
-  case vcd' of
-    Nothing -> return ()
-    Just vcd -> hClose $ handle vcd
-  writeIORef vcd $ Nothing
-  writeIORef sample $ return ()
-
-step :: Netlist -> Memory -> IORef (IO ()) -> IO (IO ())
-step netlist memory sample = do
+initializeStep :: Netlist BlackBoxStep -> Memory -> IORef (IO ()) -> IORef (IO ()) -> IO ()
+initializeStep netlist memory sample step = do
   let steps = map stepNet netlist
-  return $ do
+  writeIORef step $ do
     sequence_ steps
     readIORef sample >>= id
   where
   read   = readArray memory
   write' = writeMemory memory
-  stepNet :: Net -> IO ()
+  stepNet :: Net BlackBoxStep -> IO ()
   stepNet a = case a of
+    BBox inputs outputs f -> do
+      outs <- mapM read inputs >>= f
+      sequence_ [ write' a b | (a, b) <- zip outputs outs ]
     Reg q _ _ d -> read d >>= write' q
     Var i _ _ expr -> case expr of
       AInput        -> return ()
@@ -151,4 +152,20 @@ step netlist memory sample = do
       AConcat a b   -> do { a <- read a; b <- read b; write $ mappend a b }
       where
       write = write' i
+
+writeMemory :: Memory -> Int -> BitVec -> IO ()
+writeMemory memory i a = do
+  b <- readArray memory i
+  when (width b /= width a) $ error $ "Memory update with different bit-vector width:  index: " ++ show i ++ "  old: " ++ show b ++ "  new: " ++ show a
+  writeArray memory i a
+
+close :: IORef (Maybe VCDHandle) -> IORef (IO ()) -> IORef (IO ()) -> IO ()
+close vcd sample step = do
+  vcd' <- readIORef vcd
+  case vcd' of
+    Nothing -> return ()
+    Just vcd -> hClose $ handle vcd
+  writeIORef vcd    $ Nothing
+  writeIORef sample $ return ()
+  writeIORef step   $ return ()
 

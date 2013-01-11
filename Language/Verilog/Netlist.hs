@@ -5,6 +5,8 @@ module Language.Verilog.Netlist
   , Net     (..)
   , Netlist
   , AExpr   (..)
+  , BlackBoxInit
+  , BlackBoxStep
   , sortTopo
   ) where
 
@@ -23,12 +25,16 @@ type NetId = Int
 type Width  = Int
 
 -- | A sequence of variable assignments and memory updates in A-normal form.
-data Net
+data Net a
   = Var  NetId Width [Path] AExpr  -- ^ Signal, width, paths, signal expression.
   | Reg  NetId Width [Path] NetId  -- ^ Signal, width, paths, associated D-inputs.
-  deriving Show
+  | BBox [NetId] [NetId] a -- (IO ([BitVec] -> IO [BitVec]))
+  --deriving Show
 
-type Netlist = [Net]
+type Netlist a = [Net a]
+
+type BlackBoxInit = IO BlackBoxStep
+type BlackBoxStep = [BitVec] -> IO [BitVec]
 
 data AExpr
   = AInput
@@ -54,11 +60,12 @@ data AExpr
   | AConcat NetId NetId
   deriving Show
 
-sortTopo :: Netlist -> Netlist
+sortTopo :: Netlist a -> Netlist a
 sortTopo a
-  | not $ S.null unknownRegDeps = error $ "Netlist contains unknown register dependencies (D input): " ++ show (S.toList unknownRegDeps)
-  | not $ S.null unknownVarDeps = error $ "Netlist contains unknown variable dependencies: "           ++ show (S.toList unknownVarDeps)
-  | otherwise = regs ++ [ Var id width paths expr | (id, width, paths, expr) <- f [] regIds vars ]
+  | not $ S.null unknownRegDeps  = error $ "Netlist contains unknown register dependencies (D input): " ++ show (S.toList unknownRegDeps)
+  | not $ S.null unknownVarDeps  = error $ "Netlist contains unknown variable dependencies: "           ++ show (S.toList unknownVarDeps)
+  | not $ S.null unknownBBoxDeps = error $ "Netlist contains unknown blackbox dependencies: "           ++ show (S.toList unknownBBoxDeps)
+  | otherwise = [ b | b@(BBox _ _ _) <- a ] ++ regs ++ [ Var id width paths expr | (id, width, paths, expr) <- f [] regIds vars ]
   where
   f sofar avail rest
     | null rest = reverse sofar
@@ -72,6 +79,9 @@ sortTopo a
   (regs, regDeps) = unzip [ (r, (q, d)) | r@(Reg q _ _ d) <- a ]
   vars = [ (id, width, paths, expr) | Var id width paths expr <- a ]
 
+  bboxInputs  = concat [ i | BBox i _ _ <- a ]
+  bboxOutputs = concat [ o | BBox _ o _ <- a ]
+
   varDeps :: [(Int, [Int])]
   varDeps = [ (i, deps e) | (i, _, _, e) <- vars ]
 
@@ -79,8 +89,9 @@ sortTopo a
   varIds  = S.fromList $ fst $ unzip varDeps
   allIds  = S.union regIds varIds
 
-  unknownRegDeps  = S.difference (S.fromList $ snd $ unzip regDeps) allIds
+  unknownRegDeps  = S.difference (S.fromList $ snd $ unzip regDeps)          allIds
   unknownVarDeps  = S.difference (S.fromList $ concat $ snd $ unzip varDeps) allIds
+  unknownBBoxDeps = S.difference (S.fromList (bboxInputs ++ bboxOutputs))    allIds
 
 deps :: AExpr -> [NetId]
 deps a = case a of
