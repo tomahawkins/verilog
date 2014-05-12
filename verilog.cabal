@@ -1,5 +1,5 @@
 name:    verilog
-version: 0.1.0
+version: 0.0.3
 
 category: Language, Hardware, Embedded
 
@@ -24,22 +24,22 @@ library
   build-depends:
     base       >= 4.0   && < 5.0,
     array      >= 0.4   && < 5.0,
-    mtl        >= 2.0   && < 3.0,
-    containers >= 0.3   && < 0.5,
-    polyparse  >= 1.4   && < 2.0,
-    vcd        >= 0.3.0 && < 0.4
+    --mtl        >= 2.0   && < 3.0,
+    --containers >= 0.3   && < 0.5,
+    polyparse  >= 1.4   && < 2.0
+    --vcd        >= 0.3.0 && < 0.4
 
   exposed-modules:
     Data.BitVec
     Language.Verilog
     Language.Verilog.AST
-    Language.Verilog.Netlist
-    Language.Verilog.NetlistConvert
+    --Language.Verilog.Netlist
+    --Language.Verilog.NetlistConvert
     Language.Verilog.Parser
     Language.Verilog.Parser.Lex
     Language.Verilog.Parser.Preprocess
     Language.Verilog.Parser.Tokens
-    Language.Verilog.Simulator
+    --Language.Verilog.Simulator
 
   extensions:
 

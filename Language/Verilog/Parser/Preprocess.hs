@@ -64,9 +64,9 @@ ppLine :: [(String, String)] -> String -> String
 ppLine _ "" = ""
 ppLine env ('`' : a) = case lookup name env of
   Just value -> value ++ ppLine env rest
-  Nothing    -> error $ "Undefined macro: `" ++ name
+  Nothing    -> error $ "Undefined macro: `" ++ name ++ "  Env: " ++ show env
   where
-  name = takeWhile (flip notElem " \t\n\r") a
+  name = takeWhile (flip elem $ ['A' .. 'Z'] ++ ['a' .. 'z'] ++ ['0' .. '9'] ++ ['_']) a
   rest = drop (length name) a
 ppLine env (a : b) = a : ppLine env b
 
