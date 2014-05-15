@@ -12,9 +12,7 @@ import Language.Verilog.Parser.Tokens
 %name modules
 %tokentype { Token }
 %error { parseError }
--- %monad { Either String }
 
--- There are 0 shift/reduce conflicts here that we know about.
 %expect 0
 
 %token
@@ -133,6 +131,8 @@ string             { Token Lit_string    _ _ }
 "<<<="             { Token Sym_lt_lt_lt_eq _ _ }
 ">>>="             { Token Sym_gt_gt_gt_eq _ _ }
 
+%nonassoc NoElse
+%nonassoc "else"
 %right "?" ":"
 %left  "||"
 %left  "&&"
@@ -145,6 +145,7 @@ string             { Token Lit_string    _ _ }
 %left  "+" "-"
 %left  "*" "/" "%"
 %left  UPlus UMinus "!" "~"
+
 
 %%
 
@@ -236,7 +237,7 @@ Stmt :: { Stmt }
 | "begin" ":" Identifier Stmts "end"              { Block (Just $3) $4 }
 | "integer" Identifier ";"                        { Integer $2         }
 | "if" "(" Expr ")" Stmt "else" Stmt              { If $3 $5 $7        }
--- | "if" "(" Expr ")" Stmt                          { If $3 $5 Null      }      XXX Dangling else.
+| "if" "(" Expr ")" Stmt %prec NoElse             { If $3 $5 Null      }
 | "for" "(" Identifier "=" Expr ";" Expr ";" Identifier "=" Expr ")" Stmt { For ($3, $5) $7 ($9, $11) $13 }
 | LHS "=" Expr ";"                                 { BlockingAssignment $1 $3 }
 | LHS "<=" Expr ";"                                { NonBlockingAssignment $1 $3 }
@@ -262,8 +263,7 @@ String :: { String }
 : string    { toString $1 }
 
 Call :: { Call }
-: Identifier                   { Call $1 [] }
-| Identifier "(" CallArgs ")"  { Call $1 $3 }
+: Identifier "(" CallArgs ")"  { Call $1 $3 }
 
 CallArgs :: { [Expr] }
 CallArgs
@@ -280,11 +280,10 @@ Exprs :: { [Expr] }
 
 Expr :: { Expr }
 : "(" Expr ")"                { $2 }
-| Identifier                  { Var $1 }
 | String                      { String $1 }
 | Number                      { Number $1 }
--- | Call            { ExprCall $1 }
--- | LHS             { ExprLHS $1 }
+| Call                        { ExprCall $1 }
+| LHS                         { ExprLHS $1 }
 | "{" Exprs "}"               { Concat $2 }
 | "{" Expr "{" Exprs "}" "}"  { Repeat $2 $4 }
 | Expr "?" Expr ":" Expr      { Mux $1 $3 $5 }

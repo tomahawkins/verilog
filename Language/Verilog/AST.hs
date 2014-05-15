@@ -78,8 +78,7 @@ unlines' :: [String] -> String
 unlines' = intercalate "\n"
 
 data Expr
-  = Var        Identifier
-  | String     String
+  = String     String
   | Number     BitVec
   | ConstBool  Bool
   | ExprLHS    LHS
@@ -113,7 +112,6 @@ data Expr
 
 instance Show Expr where
   show a = case a of
-    Var        a -> a
     String     a -> printf "\"%s\"" a
     Number     a -> printf "%d'h%x" (width a) (value a)
     ConstBool  a -> printf "1'b%s" (if a then "1" else "0")
