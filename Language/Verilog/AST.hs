@@ -78,7 +78,8 @@ unlines' :: [String] -> String
 unlines' = intercalate "\n"
 
 data Expr
-  = String     String
+  = Var        Identifier
+  | String     String
   | Number     BitVec
   | ConstBool  Bool
   | ExprLHS    LHS
@@ -95,6 +96,8 @@ data Expr
   | Mod        Expr Expr
   | Add        Expr Expr
   | Sub        Expr Expr
+  | UAdd       Expr
+  | USub       Expr
   | ShiftL     Expr Expr
   | ShiftR     Expr Expr
   | Eq         Expr Expr
@@ -110,6 +113,7 @@ data Expr
 
 instance Show Expr where
   show a = case a of
+    Var        a -> a
     String     a -> printf "\"%s\"" a
     Number     a -> printf "%d'h%x" (width a) (value a)
     ConstBool  a -> printf "1'b%s" (if a then "1" else "0")
@@ -127,6 +131,8 @@ instance Show Expr where
     Mod        a b -> printf "(%s % %s)"  (show a) (show b)
     Add        a b -> printf "(%s + %s)"  (show a) (show b)
     Sub        a b -> printf "(%s - %s)"  (show a) (show b)
+    UAdd       a   -> printf "(+ %s)"     (show a)
+    USub       a   -> printf "(- %s)"     (show a)
     ShiftL     a b -> printf "(%s << %s)" (show a) (show b)
     ShiftR     a b -> printf "(%s >> %s)" (show a) (show b)
     Eq         a b -> printf "(%s == %s)" (show a) (show b)

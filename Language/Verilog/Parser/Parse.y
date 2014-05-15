@@ -133,7 +133,7 @@ string             { Token Lit_string    _ _ }
 "<<<="             { Token Sym_lt_lt_lt_eq _ _ }
 ">>>="             { Token Sym_gt_gt_gt_eq _ _ }
 
-%right "?"
+%right "?" ":"
 %left  "||"
 %left  "&&"
 %left  "|" "~|"
@@ -144,7 +144,7 @@ string             { Token Lit_string    _ _ }
 %left  "<<" ">>"
 %left  "+" "-"
 %left  "*" "/" "%"
-%left  UPlus UMinus "!" "~"    -- XXX Need to handle unary operators.
+%left  UPlus UMinus "!" "~"
 
 %%
 
@@ -279,7 +279,37 @@ Exprs :: { [Expr] }
 | Exprs "," Expr  { $1 ++ [$3] }
 
 Expr :: { Expr }
-: String { String "asdf" }
+: "(" Expr ")"                { $2 }
+| Identifier                  { Var $1 }
+| String                      { String $1 }
+| Number                      { Number $1 }
+-- | Call            { ExprCall $1 }
+-- | LHS             { ExprLHS $1 }
+| "{" Exprs "}"               { Concat $2 }
+| "{" Expr "{" Exprs "}" "}"  { Repeat $2 $4 }
+| Expr "?" Expr ":" Expr      { Mux $1 $3 $5 }
+| Expr "||" Expr              { Or  $1 $3 }
+| Expr "&&" Expr              { And $1 $3 }
+| Expr "|"  Expr              { BWOr $1 $3 }
+| Expr "^"  Expr              { BWXor $1 $3 }
+| Expr "&"  Expr              { BWAnd $1 $3 }
+| Expr "==" Expr              { Eq $1 $3 }
+| Expr "!=" Expr              { Ne $1 $3 }
+| Expr "<"  Expr              { Lt $1 $3 }
+| Expr "<=" Expr              { Le $1 $3 }
+| Expr ">"  Expr              { Gt $1 $3 }
+| Expr ">=" Expr              { Ge $1 $3 }
+| Expr "<<" Expr              { ShiftL $1 $3 }
+| Expr ">>" Expr              { ShiftR $1 $3 }
+| Expr "+"  Expr              { Add $1 $3 }
+| Expr "-"  Expr              { Sub $1 $3 }
+| Expr "*"  Expr              { Mul $1 $3 }
+| Expr"/"   Expr              { Div $1 $3 }
+| Expr "%"  Expr              { Mod $1 $3 }
+| "!" Expr                    { Not $2 }
+| "~" Expr                    { BWNot $2 }
+| "+" Expr %prec UPlus        { UAdd $2 }
+| "-" Expr %prec UMinus       { USub $2 }
 
 
 {
