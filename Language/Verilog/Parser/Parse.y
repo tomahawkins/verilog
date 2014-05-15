@@ -130,68 +130,133 @@ string             { Token Lit_string    _ _ }
 ">>>="             { Token Sym_gt_gt_gt_eq _ _ }
 
 
-%left  "+" "-" "!" "~"    -- Not sure how to handle unary operators.
-%left  "*" "/" "%"
-%left  "<<" ">>"
-%left  "<" "<=" ">" ">="
-%left  "==" "!=" "===" "!=="
-%left  "&" "~&"
-%left  "^" "^~"
-%left  "|" "~|"
-%left  "&&"
-%left  "||"
 %right "?"
-
-{-
-%right "new" "return" "take"
-%left "offsetof" "sizeof"
--- these precedences were added to resolve specific conflicts in favor of shifts
--- if things have gone strange, try removing these and seeing if the conflicts
--- that result are related to the problem
-%left TYAPPLY
-%nonassoc TUPLE WHILE SEPLIST EXPR STEXPR_SP SWITCH IFTHEN 
-%left "*"
-
-%left "[" "{"
-%nonassoc "]""}"
-%left "("
-%nonassoc ")"
-
-%nonassoc ";" "," "|"
-%nonassoc "="
-%right     "||"
-%right     "&&"
-%nonassoc "@"
-%nonassoc ":=" ":!="
-
-%nonassoc symid
-%left FNAPPLY "@["
-%nonassoc MKGATE
-
-%right "in" "out"
-%left ":" ":!"
-
-%nonassoc "!"
-
-%nonassoc "<-"
-
-%left "."
--}
+%left  "||"
+%left  "&&"
+%left  "|" "~|"
+%left  "^" "^~"
+%left  "&" "~&"
+%left  "==" "!=" "===" "!=="
+%left  "<" "<=" ">" ">="
+%left  "<<" ">>"
+%left  "+" "-"
+%left  "*" "/" "%"
+%left  UPlus UMinus "!" "~"    -- XXX Need to handle unary operators.
 
 %%
 
 Modules :: { [Module] }
-: { [] }
+:                { [] }
 | Modules Module { $1 ++ [$2] }
 
 Module :: { Module }
-: "module" { Module "asdf" [] [] }
+: "module" Identifier ModulePortList ";" ModuleItems "endmodule"{ Module $2 $3 $5 }
+
+Identifier :: { Identifier }
+: simpleIdentifier   { tokenString $1 }
+| escapedIdentifier  { tokenString $1 }
+| systemIdentifier   { tokenString $1 }
+
+ModulePortList :: { [Identifier] }
+:                         { [] }
+| "(" ModulePortList1 ")" { $2 }
+
+ModulePortList1 :: { [Identifier] }
+:                     Identifier  { [$1] }
+| ModulePortList1 "," Identifier  { $1 ++ [$3] }
+
+ModuleItems :: { [ModuleItem] }
+:                         { [] }
+| ModuleItems ModuleItem  { $1 ++ [$2] }
+
+ModuleItem :: { ModuleItem }
+: "parameter" MaybeRange Identifier "=" Expr ";"        { Parameter $2 $3 $5 }
+| Net MaybeRange Declarations ";"                       { $1 $2 $3 }
+| "assign" LHS "=" Expr ";"                             { Assign $2 $4 }
+| "initial" Stmt                                        { Initial $2 }
+| "always" "@" "(" Sense ")" Stmt                       { Always $4 $6 }
+| Identifier ParameterBindings Identifier Bindings ";"  { Instance $1 $2 $3 $4 }
+
+Net :: { Maybe Range -> [(Identifier, Maybe Range)] -> ModuleItem }
+: "input"   { Input   }
+| "output"  { Output  }
+| "inout"   { Inout   }
+| "wire"    { Wire    }
+| "reg"     { Reg     }
+
+Declarations :: { [(Identifier, Maybe Range)] }
+:                  Identifier MaybeRange    { [($1, $2)]       }
+| Declarations "," Identifier MaybeRange    { $1 ++ [($3, $4)] }
+
+MaybeRange :: { Maybe Range }
+:         { Nothing }
+| Range   { Just $1 }
+
+Range :: { Range }
+: "[" Expr ":" Expr "]"  { ($2, $4) }
+
+LHS :: { LHS }
+: Identifier              { LHS      $1    }
+| Identifier Range        { LHSRange $1 $2 }
+| Identifier "[" Expr "]" { LHSBit   $1 $3 }
+
+Sense :: { Sense }
+:            Sense1 { $1 }
+| Sense "or" Sense1 { SenseOr $1 $3 }
+
+Sense1 :: { Sense }
+:           LHS { Sense        $1 }
+| "posedge" LHS { SensePosedge $2 }
+| "negedge" LHS { SenseNegedge $2 }
+
+Bindings :: { [(Identifier, Maybe Expr)] }
+: "(" Bindings1 ")" { $2 }
+
+Bindings1 :: { [(Identifier, Maybe Expr)] }
+:               Binding  { [$1] }
+| Bindings1 "," Binding  { $1 ++ [$3] }
+
+Binding :: { (Identifier, Maybe Expr) }
+: "." Identifier "(" MaybeExpr ")" { ($2, $4) }
+
+ParameterBindings :: { [(Identifier, Maybe Expr)] }
+:              { [] }
+| "#" Bindings { $2 }
+
+MaybeExpr :: { Maybe Expr }
+:         { Nothing }
+| Expr    { Just $1 }
+
+Expr :: { Expr }
+: string { String "asdf" }
+
+Stmt :: { Stmt }
+: ";" { Null }
+
+  {-
+  [ do { tok KW_begin; a <- optional (tok Sym_colon >> identifier); b <- many stmt; tok KW_end; return $ Block a b }
+  , do { tok KW_for; tok Sym_paren_l; a <- identifier; tok Sym_eq; b <- expr; tok Sym_semi; c <- expr; tok Sym_semi; d <- identifier; tok Sym_eq; e <- expr; tok Sym_paren_r; f <- stmt; return $ For (a, b) c (d, e) f }
+  , do { tok KW_integer; a <- identifier;        tok Sym_semi; return $ Integer a }
+  , do { tok KW_if; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- stmt; tok KW_else; c <- stmt; return $ If a b c    }
+  , do { tok KW_if; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- stmt;                         return $ If a b Null }
+  , do { a <- lhs; tok Sym_eq;    b <- expr;     tok Sym_semi; return $ BlockingAssignment    a b }
+  , do { a <- lhs; tok Sym_lt_eq; b <- expr;     tok Sym_semi; return $ NonBlockingAssignment a b }
+  , do { a <- call; tok Sym_semi; return $ StmtCall a }
+  , do { tok KW_case; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- many case_; c <- default_; tok KW_endcase; return $ Case a b c }
+  , do { tok Sym_semi; return Null }
+  , do { tok Sym_pound; a <- number; b <- stmt; return $ Delay a b }
+  ]
+
+call :: Verilog Call
+call = do { a <- identifier; tok Sym_paren_l; b <- commaList expr; tok Sym_paren_r; return $ Call a b }
+-}
+
+
 
 {
-
 parseError :: [Token] -> a
 parseError a = case a of
-  [] -> error "Parse error: no tokens left to parse."
+  []              -> error "Parse error: no tokens left to parse."
   Token _ s p : _ -> error $ "Parse error: unexpected token '" ++ s ++ "' at " ++ show p ++ "."
-
 }
+
