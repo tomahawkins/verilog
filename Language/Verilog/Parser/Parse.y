@@ -1,6 +1,10 @@
 {
 module Language.Verilog.Parser.Parse (modules) where
 
+import Data.Bits
+import Data.List
+
+import Data.BitVec
 import Language.Verilog.AST
 import Language.Verilog.Parser.Tokens
 }
@@ -129,7 +133,6 @@ string             { Token Lit_string    _ _ }
 "<<<="             { Token Sym_lt_lt_lt_eq _ _ }
 ">>>="             { Token Sym_gt_gt_gt_eq _ _ }
 
-
 %right "?"
 %left  "||"
 %left  "&&"
@@ -223,34 +226,60 @@ ParameterBindings :: { [(Identifier, Maybe Expr)] }
 :              { [] }
 | "#" Bindings { $2 }
 
+Stmts :: { [Stmt] }
+:            { [] }
+| Stmts Stmt { $1 ++ [$2] }
+
+Stmt :: { Stmt }
+: ";" { Null }
+| "begin"                Stmts "end"              { Block Nothing   $2 }
+| "begin" ":" Identifier Stmts "end"              { Block (Just $3) $4 }
+| "integer" Identifier ";"                        { Integer $2         }
+| "if" "(" Expr ")" Stmt "else" Stmt              { If $3 $5 $7        }
+-- | "if" "(" Expr ")" Stmt                          { If $3 $5 Null      }      XXX Dangling else.
+| "for" "(" Identifier "=" Expr ";" Expr ";" Identifier "=" Expr ")" Stmt { For ($3, $5) $7 ($9, $11) $13 }
+| LHS "=" Expr ";"                                 { BlockingAssignment $1 $3 }
+| LHS "<=" Expr ";"                                { NonBlockingAssignment $1 $3 }
+| "#" Number Stmt                                  { Delay $2 $3 }
+| Call ";"                                         { StmtCall $1 }
+| "case" "(" Expr ")" Cases CaseDefault "endcase"  { Case $3 $5 $6 }
+
+Cases :: { [Case] }
+:              { [] }
+| Cases Case   { $1 ++ [$2] }
+
+Case :: { Case }
+: Exprs ":" Stmt  { ($1, $3) }
+
+CaseDefault  :: { Stmt }
+:                     { Null }
+| "default" ":" Stmt  { $3 }
+
+Number :: { BitVec }
+: number    { toNumber $1 }
+
+String :: { String }
+: string    { toString $1 }
+
+Call :: { Call }
+: Identifier                   { Call $1 [] }
+| Identifier "(" CallArgs ")"  { Call $1 $3 }
+
+CallArgs :: { [Expr] }
+CallArgs
+:              Expr  { [$1] }
+| CallArgs "," Expr  { $1 ++ [$3] }
+
 MaybeExpr :: { Maybe Expr }
 :         { Nothing }
 | Expr    { Just $1 }
 
+Exprs :: { [Expr] }
+:           Expr  { [$1] }
+| Exprs "," Expr  { $1 ++ [$3] }
+
 Expr :: { Expr }
-: string { String "asdf" }
-
-Stmt :: { Stmt }
-: ";" { Null }
-
-  {-
-  [ do { tok KW_begin; a <- optional (tok Sym_colon >> identifier); b <- many stmt; tok KW_end; return $ Block a b }
-  , do { tok KW_for; tok Sym_paren_l; a <- identifier; tok Sym_eq; b <- expr; tok Sym_semi; c <- expr; tok Sym_semi; d <- identifier; tok Sym_eq; e <- expr; tok Sym_paren_r; f <- stmt; return $ For (a, b) c (d, e) f }
-  , do { tok KW_integer; a <- identifier;        tok Sym_semi; return $ Integer a }
-  , do { tok KW_if; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- stmt; tok KW_else; c <- stmt; return $ If a b c    }
-  , do { tok KW_if; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- stmt;                         return $ If a b Null }
-  , do { a <- lhs; tok Sym_eq;    b <- expr;     tok Sym_semi; return $ BlockingAssignment    a b }
-  , do { a <- lhs; tok Sym_lt_eq; b <- expr;     tok Sym_semi; return $ NonBlockingAssignment a b }
-  , do { a <- call; tok Sym_semi; return $ StmtCall a }
-  , do { tok KW_case; tok Sym_paren_l; a <- expr; tok Sym_paren_r; b <- many case_; c <- default_; tok KW_endcase; return $ Case a b c }
-  , do { tok Sym_semi; return Null }
-  , do { tok Sym_pound; a <- number; b <- stmt; return $ Delay a b }
-  ]
-
-call :: Verilog Call
-call = do { a <- identifier; tok Sym_paren_l; b <- commaList expr; tok Sym_paren_r; return $ Call a b }
--}
-
+: String { String "asdf" }
 
 
 {
@@ -258,5 +287,27 @@ parseError :: [Token] -> a
 parseError a = case a of
   []              -> error "Parse error: no tokens left to parse."
   Token _ s p : _ -> error $ "Parse error: unexpected token '" ++ s ++ "' at " ++ show p ++ "."
+
+toString :: Token -> String
+toString = tail . init . tokenString
+
+toNumber :: Token -> BitVec
+toNumber = number . tokenString
+  where
+  number :: String -> BitVec
+  number a
+    | all (flip elem ['0' .. '9']) a = fromInteger $ read a
+    | head a == '\''                 = fromInteger $ f a
+    | isInfixOf  "'"  a              = bitVec (read w) (f b)
+    | otherwise                      = error $ "Invalid number format: " ++ a
+    where
+    w = takeWhile (/= '\'') a
+    b = dropWhile (/= '\'') a
+    f a 
+      | isPrefixOf "'d" a = read $ drop 2 a
+      | isPrefixOf "'h" a = read $ "0x" ++ drop 2 a
+      | isPrefixOf "'b" a = foldl (\ n b -> shiftL n 1 .|. (if b == '1' then 1 else 0)) 0 (drop 2 a)
+      | otherwise         = error $ "Invalid number format: " ++ a
+
 }
 
