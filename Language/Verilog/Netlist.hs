@@ -63,7 +63,7 @@ data AExpr
 sortTopo :: Netlist a -> Netlist a
 sortTopo a
   | not $ S.null unknownRegDeps  = error $ "Netlist contains unknown register dependencies (D input): " ++ show (S.toList unknownRegDeps)
-  | not $ S.null unknownVarDeps  = error $ "Netlist contains unknown variable dependencies: "           ++ show (S.toList unknownVarDeps)
+  | not $ S.null unknownVarDeps  = error $ "Netlist contains unknown variable dependencies: "           ++ show (concat [ [ e | Var _ _ _ e <- a, elem v $ deps e ] | v <- S.toList unknownVarDeps ])
   | not $ S.null unknownBBoxDeps = error $ "Netlist contains unknown blackbox dependencies: "           ++ show (S.toList unknownBBoxDeps)
   | otherwise = [ b | b@(BBox _ _ _) <- a ] ++ regs ++ [ Var id width paths expr | (id, width, paths, expr) <- f [] regIds vars ]
   where

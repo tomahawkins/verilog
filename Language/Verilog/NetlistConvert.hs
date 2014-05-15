@@ -21,9 +21,8 @@ type Parameters = [PortBinding]
 -- | Details of blackboxes.
 data BlackBox = BlackBox
   { bboxModule         :: Identifier
-  , bboxInputs         :: Parameters -> [(Identifier, Width)]
-  , bboxOutputs        :: Parameters -> [(Identifier, Width)]
-  , bboxImplementation :: Parameters -> Path -> BlackBoxInit  -- ^ Signal order determined by bboxInputs and bboxOutputs.
+  , bboxIO             :: Parameters -> ([(Identifier, Width)], [(Identifier, Width)])
+  , bboxImplementation :: Parameters -> Path -> BlackBoxInit  -- ^ Signal order determined by bboxIO.
   }
 
 data CompilerState = CompilerState
@@ -41,12 +40,11 @@ data CompilerState = CompilerState
 type VC = StateT CompilerState IO
 
 checkN :: Int -> String -> VC ()
-checkN _n _msg = return () {-do
+checkN n msg = do
   c <- get
   liftIO $ when (nextId c == n) $ do
     putStrLn $ "(instance: " ++ intercalate "." (path c) ++ "): " ++ msg
     hFlush stdout
-    -}
 
 -- | Netlist a design given a list of modules, the top level module name, and all 'BlackBox' implementations.
 --   The top level module must not have any ports.
@@ -87,7 +85,7 @@ extendEnv range vars = mapM_ (f $ width range) vars
   where
   f :: Int -> (Identifier, Maybe Range) -> VC ()
   f width (var, array) = case array of
-    Nothing -> checkN 89 ("extendEnv': " ++ var) >> extendEnv width var
+    Nothing -> extendEnv width var
     Just _  -> error' $ "Arrays not supported: " ++ var
 
   extendEnv :: Int -> Identifier -> VC ()
@@ -151,8 +149,8 @@ compileModuleItem a = case a of
         _ : _ : _ -> error' $ "Multiple blackboxes with same name:  module: " ++ mName ++ "  instance: " ++ intercalate "." path'
         [bbox] -> do
           modify $ \ c -> c { moduleName = mName, path = path' }
-          inputs  <- mapM input  $ bboxInputs  bbox parameters
-          outputs <- mapM output $ bboxOutputs bbox parameters
+          inputs  <- mapM input  $ fst $ bboxIO bbox parameters
+          outputs <- mapM output $ snd $ bboxIO bbox parameters
           let impl = bboxImplementation bbox parameters path'
           modify $ \ c -> c { moduleName = moduleName c0, path = path c0, blackBoxImpls = (inputs, outputs, impl) : blackBoxImpls c }
           where
@@ -167,13 +165,14 @@ compileModuleItem a = case a of
           output :: (Identifier, Width) -> VC NetId
           output (a, w) = do
             c <- get
-            put c { nextId = nextId c + 1, nets = Var (nextId c) w [path c ++ [a]] AInput : nets c }
+            let outputSrc = nextId c
+            put c { nextId = nextId c + 1, nets = Var outputSrc w [path c ++ [a]] AInput : nets c }
             case lookup a bindings of
               Nothing       -> return ()
               Just Nothing  -> return ()
               Just (Just (ExprLHS (LHS v))) -> do
                 (n, _) <- getNetId' c0 v
-                modify $ \ c -> c { nets = Var n w [init (path c) ++ [v]] (AVar (nextId c)) : nets c }
+                modify $ \ c -> c { nets = Var n w [init (path c) ++ [v]] (AVar outputSrc) : nets c }
               Just (Just e) -> error' $ "Invalid output port binding expression in instance " ++ show iName ++ ": " ++ show e
             return $ nextId c
 
@@ -308,7 +307,7 @@ compileExpr expr = case expr of
     a <- anf' a
     net 1 $ ASelect v a a
   ExprLHS (LHSRange v (a, b)) -> do
-    (v, w) <- getNetId v
+    (v, _) <- getNetId v
     a <- anf' a
     b <- anf' b
     net w $ ASelect v a b

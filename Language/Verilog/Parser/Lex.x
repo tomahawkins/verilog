@@ -139,7 +139,7 @@ tokens :-
   "/="               { tok Sym_slash_eq }
   "%="               { tok Sym_percent_eq }
   "&="               { tok Sym_amp_eq }
-  "+="               { tok Sym_bar_eq }
+  "|="               { tok Sym_bar_eq }
   "^="               { tok Sym_hat_eq }
   "+:"               { tok Sym_plus_colon }
   "-:"               { tok Sym_dash_colon }

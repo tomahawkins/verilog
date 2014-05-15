@@ -4,24 +4,23 @@ module Language.Verilog.Parser
 
 import Data.Bits hiding (bit)
 import Data.List
-import Text.ParserCombinators.Poly.Plain
 
 import Data.BitVec
 import Language.Verilog.AST
-import Language.Verilog.Parser.Tokens
 import Language.Verilog.Parser.Lex
+import Language.Verilog.Parser.Parse
 import Language.Verilog.Parser.Preprocess
+import Language.Verilog.Parser.Tokens
 
 -- | Parses a file given a table of predefined macros, the file name, and the file contents.
 parseFile :: [(String, String)] -> FilePath -> String -> [Module]
-parseFile env file content = case parseTokens tokens of
-    Right a -> a
-    Left  m -> error m
+parseFile env file content = modules tokens
   where
   tokens = map relocate $ alexScanTokens $ preprocess env file content
   relocate :: Token -> Token
   relocate (Token t s (Position _ l c)) = Token t s $ Position file l c
 
+{-
 parseTokens :: [Token] -> Either String [Module]
 parseTokens tokens = case runParser modules tokens of
     (Right a, [])          -> Right a
@@ -234,4 +233,4 @@ lhs = oneOf
   , do { a <- identifier; b <- bit;   return $ LHSBit   a b }
   , do { a <- identifier;             return $ LHS      a   }
   ]
-
+-}
