@@ -111,7 +111,7 @@ data Expr
 instance Show Expr where
   show a = case a of
     String     a -> printf "\"%s\"" a
-    Number     a -> printf "%d'd%d" (width a) (value a)
+    Number     a -> printf "%d'h%x" (width a) (value a)
     ConstBool  a -> printf "1'b%s" (if a then "1" else "0")
     ExprLHS    a -> show a
     ExprCall   a -> show a
