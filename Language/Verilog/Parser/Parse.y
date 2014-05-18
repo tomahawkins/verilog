@@ -198,8 +198,8 @@ WireDeclarations :: { [(Identifier, Maybe Expr)] }
 | WireDeclarations "," WireDeclaration    { $1 ++ [$3] }
 
 WireDeclaration :: { (Identifier, Maybe Expr) }
-: Identifier               { [($1, Nothing)] }
-| Identifier "=" Expr      { [($1, Just $3)] }
+: Identifier               { ($1, Nothing) }
+| Identifier "=" Expr      { ($1, Just $3) }
 
 MaybeRange :: { Maybe Range }
 :         { Nothing }
