@@ -175,22 +175,31 @@ ModuleItems :: { [ModuleItem] }
 
 ModuleItem :: { ModuleItem }
 : "parameter" MaybeRange Identifier "=" Expr ";"        { Parameter $2 $3 $5 }
-| Net MaybeRange Declarations ";"                       { $1 $2 $3 }
+| "input"  MaybeRange Identifiers ";"                   { Input  $2 $3 }
+| "output" MaybeRange Identifiers ";"                   { Output $2 $3 }
+| "inout"  MaybeRange Identifiers ";"                   { Inout  $2 $3 }
+| "reg"    MaybeRange RegDeclarations ";"               { Reg    $2 $3 }
+| "wire"   MaybeRange WireDeclarations ";"              { Wire   $2 $3 }
 | "assign" LHS "=" Expr ";"                             { Assign $2 $4 }
 | "initial" Stmt                                        { Initial $2 }
 | "always" "@" "(" Sense ")" Stmt                       { Always $4 $6 }
 | Identifier ParameterBindings Identifier Bindings ";"  { Instance $1 $2 $3 $4 }
 
-Net :: { Maybe Range -> [(Identifier, Maybe Range)] -> ModuleItem }
-: "input"   { Input   }
-| "output"  { Output  }
-| "inout"   { Inout   }
-| "wire"    { Wire    }
-| "reg"     { Reg     }
+Identifiers :: { [Identifier] }
+:                 Identifier { [$1] }
+| Identifiers "," Identifier { $1 ++ [$3] }
 
-Declarations :: { [(Identifier, Maybe Range)] }
-:                  Identifier MaybeRange    { [($1, $2)]       }
-| Declarations "," Identifier MaybeRange    { $1 ++ [($3, $4)] }
+RegDeclarations :: { [(Identifier, Maybe Range)] }
+:                     Identifier MaybeRange    { [($1, $2)]       }
+| RegDeclarations "," Identifier MaybeRange    { $1 ++ [($3, $4)] }
+
+WireDeclarations :: { [(Identifier, Maybe Expr)] }
+:                      WireDeclaration    { [$1] }
+| WireDeclarations "," WireDeclaration    { $1 ++ [$3] }
+
+WireDeclaration :: { (Identifier, Maybe Expr) }
+: Identifier               { [($1, Nothing)] }
+| Identifier "=" Expr      { [($1, Just $3)] }
 
 MaybeRange :: { Maybe Range }
 :         { Nothing }

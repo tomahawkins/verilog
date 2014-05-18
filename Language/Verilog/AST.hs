@@ -31,10 +31,10 @@ instance Show Module where
 
 data ModuleItem
   = Parameter (Maybe Range) Identifier Expr
-  | Input     (Maybe Range) [(Identifier, Maybe Range)]
-  | Output    (Maybe Range) [(Identifier, Maybe Range)]
-  | Inout     (Maybe Range) [(Identifier, Maybe Range)]
-  | Wire      (Maybe Range) [(Identifier, Maybe Range)]
+  | Input     (Maybe Range) [Identifier]
+  | Output    (Maybe Range) [Identifier]
+  | Inout     (Maybe Range) [Identifier]
+  | Wire      (Maybe Range) [(Identifier, Maybe Expr)]
   | Reg       (Maybe Range) [(Identifier, Maybe Range)]
   | Initial    Stmt
   | Always     Sense Stmt
@@ -47,11 +47,11 @@ type PortBinding = (Identifier, Maybe Expr)
 instance Show ModuleItem where
   show a = case a of
     Parameter r n e -> printf "parameter %s%s = %s;" (showRange r) n (show e)
-    Input     r a   -> printf "input  %s%s;" (showRange r) (commas [ a ++ showRange r | (a, r) <- a ])
-    Output    r a   -> printf "output %s%s;" (showRange r) (commas [ a ++ showRange r | (a, r) <- a ])
-    Inout     r a   -> printf "inout  %s%s;" (showRange r) (commas [ a ++ showRange r | (a, r) <- a ])
-    Wire      r a   -> printf "wire   %s%s;" (showRange r) (commas [ a ++ showRange r | (a, r) <- a ])
-    Reg       r a   -> printf "reg    %s%s;" (showRange r) (commas [ a ++ showRange r | (a, r) <- a ])
+    Input     r a   -> printf "input  %s%s;" (showRange r) (commas a)
+    Output    r a   -> printf "output %s%s;" (showRange r) (commas a)
+    Inout     r a   -> printf "inout  %s%s;" (showRange r) (commas a)
+    Wire      r a   -> printf "wire   %s%s;" (showRange r) (commas [ a ++ showAssign r | (a, r) <- a ])
+    Reg       r a   -> printf "reg    %s%s;" (showRange r) (commas [ a ++ showRange  r | (a, r) <- a ])
     Initial   a     -> printf "initial\n%s" $ indent $ show a
     Always    a b   -> printf "always @(%s)\n%s" (show a) $ indent $ show b
     Assign    a b   -> printf "assign %s = %s;" (show a) (show b)
@@ -61,6 +61,10 @@ instance Show ModuleItem where
     where
     showPorts :: Show a => [(Identifier, Maybe a)] -> String
     showPorts ports = printf "(%s)" $ commas [ printf ".%s(%s)" i (if isJust arg then show $ fromJust arg else "") | (i, arg) <- ports ]
+    showAssign :: Maybe Expr -> String
+    showAssign a = case a of
+      Nothing -> ""
+      Just a -> printf " = %s" $ show a
   
 showRange :: Maybe Range -> String
 showRange Nothing = ""
