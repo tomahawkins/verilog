@@ -2,10 +2,6 @@ module Language.Verilog.Parser
   ( parseFile
   ) where
 
-import Data.Bits hiding (bit)
-import Data.List
-
-import Data.BitVec
 import Language.Verilog.AST
 import Language.Verilog.Parser.Lex
 import Language.Verilog.Parser.Parse
