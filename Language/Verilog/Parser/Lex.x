@@ -23,22 +23,21 @@ $decimalDigit = [0-9]
 @octalBase   = "'" [oO]
 @hexBase     = "'" [hH]
 
-@binaryValue = @binaryDigit ("_" | @binaryDigit)*
+@binaryValue         = @binaryDigit ("_" | @binaryDigit)*
 @octalValue  = @octalDigit  ("_" | @octalDigit)*
 @hexValue    = @hexDigit    ("_" | @hexDigit)*
 
 @unsignedNumber = $decimalDigit ("_" | $decimalDigit)*
-@nonZeroUnsignedNumber = $nonZeroDecimalDigit ("_" | $decimalDigit)*
 
-@size = @nonZeroUnsignedNumber
+@size = @unsignedNumber
 
 @decimalNumber
   = @unsignedNumber
-  | @size @decimalBase @unsignedNumber
+  | @size? @decimalBase @unsignedNumber
 
-@binaryNumber = @size @binaryBase @binaryValue
-@octalNumber  = @size @octalBase  @octalValue
-@hexNumber    = @size @hexBase    @hexValue
+@binaryNumber = @size? @binaryBase @binaryValue
+@octalNumber  = @size? @octalBase  @octalValue
+@hexNumber    = @size? @hexBase    @hexValue
   
 -- $exp  = [eE]
 -- $sign = [\+\-]
@@ -73,6 +72,7 @@ tokens :-
   "inout"            { tok KW_inout      }
   "input"            { tok KW_input      }
   "integer"          { tok KW_integer    }
+  "localparam"       { tok KW_localparam }
   "module"           { tok KW_module     }
   "negedge"          { tok KW_negedge    }
   "or"               { tok KW_or         }

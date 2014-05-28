@@ -1,5 +1,6 @@
 module Language.Verilog.Parser
   ( parseFile
+  , preprocess
   ) where
 
 import Language.Verilog.AST

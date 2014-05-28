@@ -21,6 +21,7 @@ import Language.Verilog.Parser.Tokens
 "assign"           { Token KW_assign     _ _ }
 "begin"            { Token KW_begin      _ _ }
 "case"             { Token KW_case       _ _ }
+"casez"            { Token KW_casez      _ _ }
 "default"          { Token KW_default    _ _ }
 "else"             { Token KW_else       _ _ }
 "end"              { Token KW_end        _ _ }
@@ -32,6 +33,7 @@ import Language.Verilog.Parser.Tokens
 "inout"            { Token KW_inout      _ _ }
 "input"            { Token KW_input      _ _ }
 "integer"          { Token KW_integer    _ _ }
+"localparam"       { Token KW_localparam _ _ }
 "module"           { Token KW_module     _ _ }
 "negedge"          { Token KW_negedge    _ _ }
 "or"               { Token KW_or         _ _ }
@@ -174,12 +176,14 @@ ModuleItems :: { [ModuleItem] }
 | ModuleItems ModuleItem  { $1 ++ [$2] }
 
 ModuleItem :: { ModuleItem }
-: "parameter" MaybeRange Identifier "=" Expr ";"        { Parameter $2 $3 $5 }
+: "parameter"  MaybeRange Identifier "=" Expr ";"       { Parameter  $2 $3 $5 }
+| "localparam" MaybeRange Identifier "=" Expr ";"       { Localparam $2 $3 $5 }
 | "input"  MaybeRange Identifiers ";"                   { Input  $2 $3 }
 | "output" MaybeRange Identifiers ";"                   { Output $2 $3 }
 | "inout"  MaybeRange Identifiers ";"                   { Inout  $2 $3 }
 | "reg"    MaybeRange RegDeclarations ";"               { Reg    $2 $3 }
 | "wire"   MaybeRange WireDeclarations ";"              { Wire   $2 $3 }
+| "integer" Identifiers ";"                             { Integer $2 }
 | "assign" LHS "=" Expr ";"                             { Assign $2 $4 }
 | "initial" Stmt                                        { Initial $2 }
 | "always" "@" "(" Sense ")" Stmt                       { Always $4 $6 }
@@ -242,17 +246,18 @@ Stmts :: { [Stmt] }
 
 Stmt :: { Stmt }
 : ";" { Null }
-| "begin"                Stmts "end"              { Block Nothing   $2 }
-| "begin" ":" Identifier Stmts "end"              { Block (Just $3) $4 }
-| "integer" Identifier ";"                        { Integer $2         }
-| "if" "(" Expr ")" Stmt "else" Stmt              { If $3 $5 $7        }
-| "if" "(" Expr ")" Stmt %prec NoElse             { If $3 $5 Null      }
+| "begin"                Stmts "end"               { Block Nothing   $2 }
+| "begin" ":" Identifier Stmts "end"               { Block (Just $3) $4 }
+| "reg" MaybeRange RegDeclarations ";"             { StmtReg $2 $3      }
+| "integer" Identifiers ";"                        { StmtInteger $2     }
+| "if" "(" Expr ")" Stmt "else" Stmt               { If $3 $5 $7        }
+| "if" "(" Expr ")" Stmt %prec NoElse              { If $3 $5 Null      }
 | "for" "(" Identifier "=" Expr ";" Expr ";" Identifier "=" Expr ")" Stmt { For ($3, $5) $7 ($9, $11) $13 }
 | LHS "=" Expr ";"                                 { BlockingAssignment $1 $3 }
 | LHS "<=" Expr ";"                                { NonBlockingAssignment $1 $3 }
-| "#" Number Stmt                                  { Delay $2 $3 }
+| "#" Expr Stmt                                    { Delay $2 $3 }
 | Call ";"                                         { StmtCall $1 }
-| "case" "(" Expr ")" Cases CaseDefault "endcase"  { Case $3 $5 $6 }
+| "case"  "(" Expr ")" Cases  CaseDefault "endcase"  { Case  $3 $5 $6 }
 
 Cases :: { [Case] }
 :              { [] }

@@ -30,12 +30,14 @@ instance Show Module where
     ]
 
 data ModuleItem
-  = Parameter (Maybe Range) Identifier Expr
-  | Input     (Maybe Range) [Identifier]
-  | Output    (Maybe Range) [Identifier]
-  | Inout     (Maybe Range) [Identifier]
-  | Wire      (Maybe Range) [(Identifier, Maybe Expr)]
-  | Reg       (Maybe Range) [(Identifier, Maybe Range)]
+  = Parameter  (Maybe Range) Identifier Expr
+  | Localparam (Maybe Range) Identifier Expr
+  | Input      (Maybe Range) [Identifier]
+  | Output     (Maybe Range) [Identifier]
+  | Inout      (Maybe Range) [Identifier]
+  | Wire       (Maybe Range) [(Identifier, Maybe Expr)]
+  | Reg        (Maybe Range) [(Identifier, Maybe Range)]
+  | Integer    [Identifier]
   | Initial    Stmt
   | Always     Sense Stmt
   | Assign     LHS Expr
@@ -46,16 +48,18 @@ type PortBinding = (Identifier, Maybe Expr)
 
 instance Show ModuleItem where
   show a = case a of
-    Parameter r n e -> printf "parameter %s%s = %s;" (showRange r) n (show e)
-    Input     r a   -> printf "input  %s%s;" (showRange r) (commas a)
-    Output    r a   -> printf "output %s%s;" (showRange r) (commas a)
-    Inout     r a   -> printf "inout  %s%s;" (showRange r) (commas a)
-    Wire      r a   -> printf "wire   %s%s;" (showRange r) (commas [ a ++ showAssign r | (a, r) <- a ])
-    Reg       r a   -> printf "reg    %s%s;" (showRange r) (commas [ a ++ showRange  r | (a, r) <- a ])
-    Initial   a     -> printf "initial\n%s" $ indent $ show a
-    Always    a b   -> printf "always @(%s)\n%s" (show a) $ indent $ show b
-    Assign    a b   -> printf "assign %s = %s;" (show a) (show b)
-    Instance  m params i ports
+    Parameter  r n e -> printf "parameter %s%s = %s;" (showRange r) n (show e)
+    Localparam r n e -> printf "localparam %s%s = %s;" (showRange r) n (show e)
+    Input      r a   -> printf "input  %s%s;" (showRange r) (commas a)
+    Output     r a   -> printf "output %s%s;" (showRange r) (commas a)
+    Inout      r a   -> printf "inout  %s%s;" (showRange r) (commas a)
+    Wire       r a   -> printf "wire   %s%s;" (showRange r) (commas [ a ++ showAssign r | (a, r) <- a ])
+    Reg        r a   -> printf "reg    %s%s;" (showRange r) (commas [ a ++ showRange  r | (a, r) <- a ])
+    Integer      a   -> printf "integer %s;"  $ commas a
+    Initial    a     -> printf "initial\n%s" $ indent $ show a
+    Always     a b   -> printf "always @(%s)\n%s" (show a) $ indent $ show b
+    Assign     a b   -> printf "assign %s = %s;" (show a) (show b)
+    Instance   m params i ports
       | null params -> printf "%s %s %s;"     m                    i (showPorts ports)
       | otherwise   -> printf "%s #%s %s %s;" m (showPorts params) i (showPorts ports)
     where
@@ -116,21 +120,21 @@ data Expr
 
 instance Show Expr where
   show a = case a of
-    String     a -> printf "\"%s\"" a
-    Number     a -> printf "%d'h%x" (width a) (value a)
-    ConstBool  a -> printf "1'b%s" (if a then "1" else "0")
-    ExprLHS    a -> show a
-    ExprCall   a -> show a
-    Not        a -> printf "(! %s)" $ show a
+    String     a   -> printf "\"%s\"" a
+    Number     a   -> printf "%d'h%x" (width a) (value a)
+    ConstBool  a   -> printf "1'b%s" (if a then "1" else "0")
+    ExprLHS    a   -> show a
+    ExprCall   a   -> show a
+    Not        a   -> printf "(! %s)" $ show a
     And        a b -> printf "(%s && %s)" (show a) (show b)
     Or         a b -> printf "(%s || %s)" (show a) (show b)
-    BWNot      a -> printf "(~ %s)" $ show a
+    BWNot      a   -> printf "(~ %s)" $ show a
     BWAnd      a b -> printf "(%s & %s)"  (show a) (show b)
     BWXor      a b -> printf "(%s ^ %s)"  (show a) (show b)
     BWOr       a b -> printf "(%s | %s)"  (show a) (show b)
     Mul        a b -> printf "(%s * %s)"  (show a) (show b)
     Div        a b -> printf "(%s / %s)"  (show a) (show b)
-    Mod        a b -> printf "(%s % %s)"  (show a) (show b)
+    Mod        a b -> printf "(%s %% %s)"  (show a) (show b)
     Add        a b -> printf "(%s + %s)"  (show a) (show b)
     Sub        a b -> printf "(%s - %s)"  (show a) (show b)
     UAdd       a   -> printf "(+ %s)"     (show a)
@@ -161,14 +165,15 @@ instance Show LHS where
 
 data Stmt
   = Block                 (Maybe Identifier) [Stmt]
-  | Integer               Identifier
+  | StmtReg               (Maybe Range) [(Identifier, Maybe Range)]
+  | StmtInteger           [Identifier]
   | Case                  Expr [Case] Stmt
   | BlockingAssignment    LHS Expr
   | NonBlockingAssignment LHS Expr
   | For                   (Identifier, Expr) Expr (Identifier, Expr) Stmt
   | If                    Expr Stmt Stmt
   | StmtCall              Call
-  | Delay                 BitVec Stmt
+  | Delay                 Expr Stmt
   | Null
   deriving Eq
 
@@ -179,7 +184,8 @@ instance Show Stmt where
   show a = case a of
     Block                 Nothing  b        -> printf "begin\n%s\nend" $ indent $ unlines' $ map show b
     Block                 (Just a) b        -> printf "begin : %s\n%s\nend" a $ indent $ unlines' $ map show b
-    Integer               a                 -> printf "integer %s;" a
+    StmtReg               a b               -> printf "reg    %s%s;" (showRange a) (commas [ a ++ showRange  r | (a, r) <- b ])
+    StmtInteger           a                 -> printf "integer %s;" $ commas a
     Case                  a b c             -> printf "case (%s)\n%s\n\tdefault:\n%s\nendcase" (show a) (indent $ unlines' $ map showCase b) (indent $ indent $ show c)
     BlockingAssignment    a b               -> printf "%s = %s;" (show a) (show b)
     NonBlockingAssignment a b               -> printf "%s <= %s;" (show a) (show b)
@@ -187,7 +193,7 @@ instance Show Stmt where
     If                    a b Null          -> printf "if (%s)\n%s"           (show a) (indent $ show b)
     If                    a b c             -> printf "if (%s)\n%s\nelse\n%s" (show a) (indent $ show b) (indent $ show c)
     StmtCall              a                 -> printf "%s;" (show a)
-    Delay                 a b               -> printf "#%d %s" (value a) (show b)
+    Delay                 a b               -> printf "#%s %s" (show a) (show b)
     Null                                    -> ";"
 
 type Case = ([Expr], Stmt)
