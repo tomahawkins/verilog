@@ -12,8 +12,10 @@ module Language.Verilog.AST
   , Range
   ) where
 
+import Data.Bits
 import Data.List
 import Data.Maybe
+import Data.Monoid
 import Text.Printf
 
 import Data.BitVec
@@ -150,6 +152,33 @@ instance Show Expr where
     Mux        a b c -> printf "(%s ? %s : %s)" (show a) (show b) (show c)
     Repeat     a b   -> printf "{%s {%s}}" (show a) (commas $ map show b)
     Concat     a     -> printf "{%s}" (commas $ map show a)
+
+instance Num Expr where
+  (+) = Add
+  (-) = Sub
+  (*) = Mul
+  negate = USub
+  abs = undefined
+  signum = undefined
+  fromInteger = Number . fromInteger
+
+instance Bits Expr where
+  (.&.) = BWAnd
+  (.|.) = BWOr
+  xor   = BWXor
+  complement = BWNot
+  shift   = error "Not supported: shift"
+  rotate  = error "Not supported: rotate"
+  bitSize = error "Not supported: bitSize"
+  isSigned _ = False
+  testBit = undefined
+  bit = undefined
+  popCount = undefined
+
+instance Monoid Expr where
+  mempty      = 0
+  mappend a b = mconcat [a, b]
+  mconcat     = Concat
 
 data LHS
   = LHS      Identifier
