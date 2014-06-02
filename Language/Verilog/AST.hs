@@ -50,8 +50,8 @@ type PortBinding = (Identifier, Maybe Expr)
 
 instance Show ModuleItem where
   show a = case a of
-    Parameter  r n e -> printf "parameter %s%s = %s;" (showRange r) n (show e)
-    Localparam r n e -> printf "localparam %s%s = %s;" (showRange r) n (show e)
+    Parameter  r n e -> printf "parameter %s%s = %s;"  (showRange r) n (showExprConst e)
+    Localparam r n e -> printf "localparam %s%s = %s;" (showRange r) n (showExprConst e)
     Input      r a   -> printf "input  %s%s;" (showRange r) (commas a)
     Output     r a   -> printf "output %s%s;" (showRange r) (commas a)
     Inout      r a   -> printf "inout  %s%s;" (showRange r) (commas a)
