@@ -62,11 +62,11 @@ instance Show ModuleItem where
     Always     a b   -> printf "always @(%s)\n%s" (show a) $ indent $ show b
     Assign     a b   -> printf "assign %s = %s;" (show a) (show b)
     Instance   m params i ports
-      | null params -> printf "%s %s %s;"     m                    i (showPorts ports)
-      | otherwise   -> printf "%s #%s %s %s;" m (showPorts params) i (showPorts ports)
+      | null params -> printf "%s %s %s;"     m                                  i (showPorts show ports)
+      | otherwise   -> printf "%s #%s %s %s;" m (showPorts showExprConst params) i (showPorts show ports)
     where
-    showPorts :: Show a => [(Identifier, Maybe a)] -> String
-    showPorts ports = printf "(%s)" $ commas [ printf ".%s(%s)" i (if isJust arg then show $ fromJust arg else "") | (i, arg) <- ports ]
+    showPorts :: (Expr -> String) -> [(Identifier, Maybe Expr)] -> String
+    showPorts s ports = printf "(%s)" $ commas [ printf ".%s(%s)" i (if isJust arg then s $ fromJust arg else "") | (i, arg) <- ports ]
     showAssign :: Maybe Expr -> String
     showAssign a = case a of
       Nothing -> ""
@@ -74,7 +74,7 @@ instance Show ModuleItem where
   
 showRange :: Maybe Range -> String
 showRange Nothing = ""
-showRange (Just (h, l)) = printf "[%s:%s] " (show h) (show l)
+showRange (Just (h, l)) = printf "[%s:%s] " (showExprConst h) (showExprConst l)
 
 indent :: String -> String
 indent a = '\t' : f a
@@ -120,38 +120,51 @@ data Expr
   | Concat     [Expr]
   deriving Eq
 
-instance Show Expr where
-  show a = case a of
-    String     a   -> printf "\"%s\"" a
-    Number     a   -> printf "%d'h%x" (width a) (value a)
-    ConstBool  a   -> printf "1'b%s" (if a then "1" else "0")
-    ExprLHS    a   -> show a
-    ExprCall   a   -> show a
-    Not        a   -> printf "(! %s)" $ show a
-    And        a b -> printf "(%s && %s)" (show a) (show b)
-    Or         a b -> printf "(%s || %s)" (show a) (show b)
-    BWNot      a   -> printf "(~ %s)" $ show a
-    BWAnd      a b -> printf "(%s & %s)"  (show a) (show b)
-    BWXor      a b -> printf "(%s ^ %s)"  (show a) (show b)
-    BWOr       a b -> printf "(%s | %s)"  (show a) (show b)
-    Mul        a b -> printf "(%s * %s)"  (show a) (show b)
-    Div        a b -> printf "(%s / %s)"  (show a) (show b)
-    Mod        a b -> printf "(%s %% %s)"  (show a) (show b)
-    Add        a b -> printf "(%s + %s)"  (show a) (show b)
-    Sub        a b -> printf "(%s - %s)"  (show a) (show b)
-    UAdd       a   -> printf "(+ %s)"     (show a)
-    USub       a   -> printf "(- %s)"     (show a)
-    ShiftL     a b -> printf "(%s << %s)" (show a) (show b)
-    ShiftR     a b -> printf "(%s >> %s)" (show a) (show b)
-    Eq         a b -> printf "(%s == %s)" (show a) (show b)
-    Ne         a b -> printf "(%s != %s)" (show a) (show b)
-    Lt         a b -> printf "(%s < %s)"  (show a) (show b)
-    Le         a b -> printf "(%s <= %s)" (show a) (show b)
-    Gt         a b -> printf "(%s > %s)"  (show a) (show b)
-    Ge         a b -> printf "(%s >= %s)" (show a) (show b)
-    Mux        a b c -> printf "(%s ? %s : %s)" (show a) (show b) (show c)
-    Repeat     a b   -> printf "{%s {%s}}" (show a) (commas $ map show b)
-    Concat     a     -> printf "{%s}" (commas $ map show a)
+showBitVecDefault :: BitVec -> String
+showBitVecDefault a = printf "%d'h%x" (width a) (value a)
+
+showBitVecConst :: BitVec -> String
+showBitVecConst a = show $ value a
+
+instance Show Expr where show = showExpr showBitVecDefault
+
+showExprConst :: Expr -> String
+showExprConst = showExpr showBitVecConst
+
+showExpr :: (BitVec -> String) -> Expr -> String
+showExpr bv a = case a of
+  String     a   -> printf "\"%s\"" a
+  Number     a   -> bv a
+  ConstBool  a   -> printf "1'b%s" (if a then "1" else "0")
+  ExprLHS    a   -> show a
+  ExprCall   a   -> show a
+  Not        a   -> printf "(! %s)" $ s a
+  And        a b -> printf "(%s && %s)" (s a) (s b)
+  Or         a b -> printf "(%s || %s)" (s a) (s b)
+  BWNot      a   -> printf "(~ %s)"     (s a)
+  BWAnd      a b -> printf "(%s & %s)"  (s a) (s b)
+  BWXor      a b -> printf "(%s ^ %s)"  (s a) (s b)
+  BWOr       a b -> printf "(%s | %s)"  (s a) (s b)
+  Mul        a b -> printf "(%s * %s)"  (s a) (s b)
+  Div        a b -> printf "(%s / %s)"  (s a) (s b)
+  Mod        a b -> printf "(%s %% %s)" (s a) (s b)
+  Add        a b -> printf "(%s + %s)"  (s a) (s b)
+  Sub        a b -> printf "(%s - %s)"  (s a) (s b)
+  UAdd       a   -> printf "(+ %s)"     (s a)
+  USub       a   -> printf "(- %s)"     (s a)
+  ShiftL     a b -> printf "(%s << %s)" (s a) (s b)
+  ShiftR     a b -> printf "(%s >> %s)" (s a) (s b)
+  Eq         a b -> printf "(%s == %s)" (s a) (s b)
+  Ne         a b -> printf "(%s != %s)" (s a) (s b)
+  Lt         a b -> printf "(%s < %s)"  (s a) (s b)
+  Le         a b -> printf "(%s <= %s)" (s a) (s b)
+  Gt         a b -> printf "(%s > %s)"  (s a) (s b)
+  Ge         a b -> printf "(%s >= %s)" (s a) (s b)
+  Mux        a b c -> printf "(%s ? %s : %s)" (s a) (s b) (s c)
+  Repeat     a b   -> printf "{%s {%s}}" (showExprConst a) (commas $ map s b)
+  Concat     a     -> printf "{%s}" (commas $ map s a)
+  where
+  s = showExpr bv
 
 instance Num Expr where
   (+) = Add
@@ -189,8 +202,8 @@ data LHS
 instance Show LHS where
   show a = case a of
     LHS        a        -> a
-    LHSBit     a b      -> printf "%s[%s]"    a (show b)
-    LHSRange   a (b, c) -> printf "%s[%s:%s]" a (show b) (show c)
+    LHSBit     a b      -> printf "%s[%s]"    a (showExprConst b)
+    LHSRange   a (b, c) -> printf "%s[%s:%s]" a (showExprConst b) (showExprConst c)
 
 data Stmt
   = Block                 (Maybe Identifier) [Stmt]
