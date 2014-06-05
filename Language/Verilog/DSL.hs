@@ -19,6 +19,7 @@ module Language.Verilog.DSL
   , mappend
   , mconcat
   , (<>)
+  , mux
   ) where
 
 import Data.Monoid
@@ -92,3 +93,5 @@ var = ExprLHS . LHS
 constant :: Int -> Integer -> Expr
 constant a b = Number $ bitVec a b
 
+mux :: Expr -> Expr -> Expr -> Expr
+mux = Mux
