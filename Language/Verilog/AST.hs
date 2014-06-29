@@ -5,6 +5,8 @@ module Language.Verilog.AST
   , Stmt       (..)
   , LHS        (..)
   , Expr       (..)
+  , UniOp      (..)
+  , BinOp      (..)
   , Sense      (..)
   , Call       (..)
   , PortBinding
@@ -93,32 +95,63 @@ data Expr
   | ConstBool  Bool
   | ExprLHS    LHS
   | ExprCall   Call
-  | Not        Expr
-  | And        Expr Expr
-  | Or         Expr Expr
-  | BWNot      Expr
-  | BWAnd      Expr Expr
-  | BWXor      Expr Expr
-  | BWOr       Expr Expr
-  | Mul        Expr Expr
-  | Div        Expr Expr
-  | Mod        Expr Expr
-  | Add        Expr Expr
-  | Sub        Expr Expr
-  | UAdd       Expr
-  | USub       Expr
-  | ShiftL     Expr Expr
-  | ShiftR     Expr Expr
-  | Eq         Expr Expr
-  | Ne         Expr Expr
-  | Lt         Expr Expr
-  | Le         Expr Expr
-  | Gt         Expr Expr
-  | Ge         Expr Expr
+  | UniOp      UniOp Expr
+  | BinOp      BinOp Expr Expr
   | Mux        Expr Expr Expr
   | Repeat     Expr [Expr]
   | Concat     [Expr]
   deriving Eq
+
+data UniOp = Not | BWNot | UAdd | USub deriving Eq
+
+instance Show UniOp where
+  show a = case a of
+    Not   -> "!"
+    BWNot -> "~"
+    UAdd  -> "+"
+    USub  -> "-"
+
+data BinOp
+  = And   
+  | Or    
+  | BWAnd 
+  | BWXor 
+  | BWOr  
+  | Mul   
+  | Div   
+  | Mod   
+  | Add   
+  | Sub   
+  | ShiftL
+  | ShiftR
+  | Eq    
+  | Ne    
+  | Lt    
+  | Le    
+  | Gt    
+  | Ge    
+  deriving Eq
+
+instance Show BinOp where
+  show a = case a of
+    And    -> "&&"
+    Or     -> "||"
+    BWAnd  -> "&"
+    BWXor  -> "^"
+    BWOr   -> "|"
+    Mul    -> "*"
+    Div    -> "/"
+    Mod    -> "%"
+    Add    -> "+"
+    Sub    -> "-"
+    ShiftL -> "<<"
+    ShiftR -> ">>"
+    Eq     -> "=="
+    Ne     -> "!="
+    Lt     -> "<"
+    Le     -> "<="
+    Gt     -> ">"
+    Ge     -> ">="
 
 showBitVecDefault :: BitVec -> String
 showBitVecDefault a = printf "%d'h%x" (width a) (value a)
@@ -133,33 +166,13 @@ showExprConst = showExpr showBitVecConst
 
 showExpr :: (BitVec -> String) -> Expr -> String
 showExpr bv a = case a of
-  String     a   -> printf "\"%s\"" a
-  Number     a   -> bv a
-  ConstBool  a   -> printf "1'b%s" (if a then "1" else "0")
-  ExprLHS    a   -> show a
-  ExprCall   a   -> show a
-  Not        a   -> printf "(! %s)" $ s a
-  And        a b -> printf "(%s && %s)" (s a) (s b)
-  Or         a b -> printf "(%s || %s)" (s a) (s b)
-  BWNot      a   -> printf "(~ %s)"     (s a)
-  BWAnd      a b -> printf "(%s & %s)"  (s a) (s b)
-  BWXor      a b -> printf "(%s ^ %s)"  (s a) (s b)
-  BWOr       a b -> printf "(%s | %s)"  (s a) (s b)
-  Mul        a b -> printf "(%s * %s)"  (s a) (s b)
-  Div        a b -> printf "(%s / %s)"  (s a) (s b)
-  Mod        a b -> printf "(%s %% %s)" (s a) (s b)
-  Add        a b -> printf "(%s + %s)"  (s a) (s b)
-  Sub        a b -> printf "(%s - %s)"  (s a) (s b)
-  UAdd       a   -> printf "(+ %s)"     (s a)
-  USub       a   -> printf "(- %s)"     (s a)
-  ShiftL     a b -> printf "(%s << %s)" (s a) (s b)
-  ShiftR     a b -> printf "(%s >> %s)" (s a) (s b)
-  Eq         a b -> printf "(%s == %s)" (s a) (s b)
-  Ne         a b -> printf "(%s != %s)" (s a) (s b)
-  Lt         a b -> printf "(%s < %s)"  (s a) (s b)
-  Le         a b -> printf "(%s <= %s)" (s a) (s b)
-  Gt         a b -> printf "(%s > %s)"  (s a) (s b)
-  Ge         a b -> printf "(%s >= %s)" (s a) (s b)
+  String     a     -> printf "\"%s\"" a
+  Number     a     -> bv a
+  ConstBool  a     -> printf "1'b%s" (if a then "1" else "0")
+  ExprLHS    a     -> show a
+  ExprCall   a     -> show a
+  UniOp      a b   -> printf "(%s %s)" (show a) (s b)
+  BinOp      a b c -> printf "(%s %s %s)" (s b) (show a) (s c)
   Mux        a b c -> printf "(%s ? %s : %s)" (s a) (s b) (s c)
   Repeat     a b   -> printf "{%s {%s}}" (showExprConst a) (commas $ map s b)
   Concat     a     -> printf "{%s}" (commas $ map s a)
@@ -167,19 +180,19 @@ showExpr bv a = case a of
   s = showExpr bv
 
 instance Num Expr where
-  (+) = Add
-  (-) = Sub
-  (*) = Mul
-  negate = USub
+  (+) = BinOp Add
+  (-) = BinOp Sub
+  (*) = BinOp Mul
+  negate = UniOp USub
   abs = undefined
   signum = undefined
   fromInteger = Number . fromInteger
 
 instance Bits Expr where
-  (.&.) = BWAnd
-  (.|.) = BWOr
-  xor   = BWXor
-  complement = BWNot
+  (.&.) = BinOp BWAnd
+  (.|.) = BinOp BWOr
+  xor   = BinOp BWXor
+  complement = UniOp BWNot
   shift   = error "Not supported: shift"
   rotate  = error "Not supported: rotate"
   bitSize = error "Not supported: bitSize"

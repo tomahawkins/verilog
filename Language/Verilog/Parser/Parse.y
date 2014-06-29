@@ -301,28 +301,28 @@ Expr :: { Expr }
 | "{" Exprs "}"               { Concat $2 }
 | "{" Expr "{" Exprs "}" "}"  { Repeat $2 $4 }
 | Expr "?" Expr ":" Expr      { Mux $1 $3 $5 }
-| Expr "||" Expr              { Or  $1 $3 }
-| Expr "&&" Expr              { And $1 $3 }
-| Expr "|"  Expr              { BWOr $1 $3 }
-| Expr "^"  Expr              { BWXor $1 $3 }
-| Expr "&"  Expr              { BWAnd $1 $3 }
-| Expr "==" Expr              { Eq $1 $3 }
-| Expr "!=" Expr              { Ne $1 $3 }
-| Expr "<"  Expr              { Lt $1 $3 }
-| Expr "<=" Expr              { Le $1 $3 }
-| Expr ">"  Expr              { Gt $1 $3 }
-| Expr ">=" Expr              { Ge $1 $3 }
-| Expr "<<" Expr              { ShiftL $1 $3 }
-| Expr ">>" Expr              { ShiftR $1 $3 }
-| Expr "+"  Expr              { Add $1 $3 }
-| Expr "-"  Expr              { Sub $1 $3 }
-| Expr "*"  Expr              { Mul $1 $3 }
-| Expr"/"   Expr              { Div $1 $3 }
-| Expr "%"  Expr              { Mod $1 $3 }
-| "!" Expr                    { Not $2 }
-| "~" Expr                    { BWNot $2 }
-| "+" Expr %prec UPlus        { UAdd $2 }
-| "-" Expr %prec UMinus       { USub $2 }
+| Expr "||" Expr              { BinOp Or  $1 $3 }
+| Expr "&&" Expr              { BinOp And $1 $3 }
+| Expr "|"  Expr              { BinOp BWOr $1 $3 }
+| Expr "^"  Expr              { BinOp BWXor $1 $3 }
+| Expr "&"  Expr              { BinOp BWAnd $1 $3 }
+| Expr "==" Expr              { BinOp Eq $1 $3 }
+| Expr "!=" Expr              { BinOp Ne $1 $3 }
+| Expr "<"  Expr              { BinOp Lt $1 $3 }
+| Expr "<=" Expr              { BinOp Le $1 $3 }
+| Expr ">"  Expr              { BinOp Gt $1 $3 }
+| Expr ">=" Expr              { BinOp Ge $1 $3 }
+| Expr "<<" Expr              { BinOp ShiftL $1 $3 }
+| Expr ">>" Expr              { BinOp ShiftR $1 $3 }
+| Expr "+"  Expr              { BinOp Add $1 $3 }
+| Expr "-"  Expr              { BinOp Sub $1 $3 }
+| Expr "*"  Expr              { BinOp Mul $1 $3 }
+| Expr"/"   Expr              { BinOp Div $1 $3 }
+| Expr "%"  Expr              { BinOp Mod $1 $3 }
+| "!" Expr                    { UniOp Not $2 }
+| "~" Expr                    { UniOp BWNot $2 }
+| "+" Expr %prec UPlus        { UniOp UAdd $2 }
+| "-" Expr %prec UMinus       { UniOp USub $2 }
 
 
 {
