@@ -98,6 +98,7 @@ data Expr
   | UniOp      UniOp Expr
   | BinOp      BinOp Expr Expr
   | Mux        Expr Expr Expr
+  | Bit        Expr Int
   | Repeat     Expr [Expr]
   | Concat     [Expr]
   deriving Eq
@@ -174,6 +175,7 @@ showExpr bv a = case a of
   UniOp      a b   -> printf "(%s %s)" (show a) (s b)
   BinOp      a b c -> printf "(%s %s %s)" (s b) (show a) (s c)
   Mux        a b c -> printf "(%s ? %s : %s)" (s a) (s b) (s c)
+  Bit        a b   -> printf "(%s [%d])" (s a) b
   Repeat     a b   -> printf "{%s {%s}}" (showExprConst a) (commas $ map s b)
   Concat     a     -> printf "{%s}" (commas $ map s a)
   where
