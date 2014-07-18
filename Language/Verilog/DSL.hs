@@ -12,7 +12,7 @@ module Language.Verilog.DSL
   , reg
   -- * Module Statements
   , assign
-  , next
+  , inst
   -- * Expressions
   , var
   , constant
@@ -20,6 +20,8 @@ module Language.Verilog.DSL
   , mconcat
   , (<>)
   , mux
+  , true
+  , false
   ) where
 
 import Data.Monoid
@@ -80,12 +82,11 @@ range w
   | w == 1    = Nothing
   | otherwise = Just (fromIntegral $ w - 1, 0)
 
-assign :: String -> Expr -> Verilog a ()
-assign a b = item $ Assign (LHS a) b
+assign :: LHS -> Expr -> Verilog a ()
+assign a b = item $ Assign a b
 
--- | Next state of a reg.  An abstraction around always.  Assume "clock" and "reset" are signals.
-next :: String -> Expr -> Verilog a ()
-next a b = item $ Always (SensePosedge $ LHS "clock") $ If (ExprLHS $ LHS "reset") (NonBlockingAssignment (LHS a) 0) (NonBlockingAssignment (LHS a) b) 
+inst :: Identifier -> [(Identifier, Expr)] -> Identifier -> [(Identifier, Expr)] -> Verilog a ()
+inst m params i bindings = item $ Instance m [ (a, Just b) | (a, b) <- params ] i [ (a, Just b) | (a, b) <- bindings ]
 
 var :: String -> Expr
 var = ExprLHS . LHS
@@ -95,3 +96,10 @@ constant a b = Number $ bitVec a b
 
 mux :: Expr -> Expr -> Expr -> Expr
 mux = Mux
+
+true :: Expr
+true = ConstBool True
+
+false :: Expr
+false = ConstBool False
+
