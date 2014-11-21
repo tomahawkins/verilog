@@ -34,7 +34,8 @@ instance Show Module where
     ]
 
 data ModuleItem
-  = Parameter  (Maybe Range) Identifier Expr
+  = Comment    String
+  | Parameter  (Maybe Range) Identifier Expr
   | Localparam (Maybe Range) Identifier Expr
   | Input      (Maybe Range) [Identifier]
   | Output     (Maybe Range) [Identifier]
@@ -52,6 +53,7 @@ type PortBinding = (Identifier, Maybe Expr)
 
 instance Show ModuleItem where
   show a = case a of
+    Comment    a     -> "// " ++ a
     Parameter  r n e -> printf "parameter %s%s = %s;"  (showRange r) n (showExprConst e)
     Localparam r n e -> printf "localparam %s%s = %s;" (showRange r) n (showExprConst e)
     Input      r a   -> printf "input  %s%s;" (showRange r) (commas a)
