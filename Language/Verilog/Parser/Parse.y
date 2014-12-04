@@ -266,9 +266,9 @@ Cases :: { [Case] }
 Case :: { Case }
 : Exprs ":" Stmt  { ($1, $3) }
 
-CaseDefault  :: { Stmt }
-:                     { Null }
-| "default" ":" Stmt  { $3 }
+CaseDefault  :: { Maybe Stmt }
+:                     { Nothing }
+| "default" ":" Stmt  { Just $3 }
 
 Number :: { BitVec }
 : number    { toNumber $1 }

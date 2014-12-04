@@ -226,7 +226,7 @@ data Stmt
   = Block                 (Maybe Identifier) [Stmt]
   | StmtReg               (Maybe Range) [(Identifier, Maybe Range)]
   | StmtInteger           [Identifier]
-  | Case                  Expr [Case] Stmt
+  | Case                  Expr [Case] (Maybe Stmt)
   | BlockingAssignment    LHS Expr
   | NonBlockingAssignment LHS Expr
   | For                   (Identifier, Expr) Expr (Identifier, Expr) Stmt
@@ -245,7 +245,8 @@ instance Show Stmt where
     Block                 (Just a) b        -> printf "begin : %s\n%s\nend" a $ indent $ unlines' $ map show b
     StmtReg               a b               -> printf "reg    %s%s;" (showRange a) (commas [ a ++ showRange  r | (a, r) <- b ])
     StmtInteger           a                 -> printf "integer %s;" $ commas a
-    Case                  a b c             -> printf "case (%s)\n%s\n\tdefault:\n%s\nendcase" (show a) (indent $ unlines' $ map showCase b) (indent $ indent $ show c)
+    Case                  a b Nothing       -> printf "case (%s)\n%s\nendcase"                 (show a) (indent $ unlines' $ map showCase b)
+    Case                  a b (Just c)      -> printf "case (%s)\n%s\n\tdefault:\n%s\nendcase" (show a) (indent $ unlines' $ map showCase b) (indent $ indent $ show c)
     BlockingAssignment    a b               -> printf "%s = %s;" (show a) (show b)
     NonBlockingAssignment a b               -> printf "%s <= %s;" (show a) (show b)
     For                   (a, b) c (d, e) f -> printf "for (%s = %s; %s; %s = %s)\n%s" a (show b) (show c) d (show e) $ indent $ show f
