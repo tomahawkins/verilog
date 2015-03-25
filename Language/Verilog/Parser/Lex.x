@@ -50,9 +50,9 @@ $decimalDigit = [0-9]
 
 -- Identifiers
 
-@escapedIdentifier = "\\" ($printable # $white) $white
+@escapedIdentifier = "\" ($printable # $white)+ $white
 @simpleIdentifier  = [a-zA-Z_] [a-zA-Z0-9_\$]*
-@systemIdentifier = "$" [a-zA-Z0-9_\$] [a-zA-Z0-9_\$]*
+@systemIdentifier = "$" [a-zA-Z0-9_\$]+
 
 
 tokens :-

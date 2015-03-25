@@ -165,6 +165,7 @@ Identifier :: { Identifier }
 
 ModulePortList :: { [Identifier] }
 :                         { [] }
+| "("                 ")" { [] }
 | "(" ModulePortList1 ")" { $2 }
 
 ModulePortList1 :: { [Identifier] }
@@ -186,7 +187,8 @@ ModuleItem :: { ModuleItem }
 | "integer" Identifiers ";"                             { Integer $2 }
 | "assign" LHS "=" Expr ";"                             { Assign $2 $4 }
 | "initial" Stmt                                        { Initial $2 }
-| "always" "@" "(" Sense ")" Stmt                       { Always $4 $6 }
+| "always"                   Stmt                       { Always Nothing $2 }
+| "always" "@" "(" Sense ")" Stmt                       { Always (Just $4) $6 }
 | Identifier ParameterBindings Identifier Bindings ";"  { Instance $1 $2 $3 $4 }
 
 Identifiers :: { [Identifier] }
@@ -213,9 +215,10 @@ Range :: { Range }
 : "[" Expr ":" Expr "]"  { ($2, $4) }
 
 LHS :: { LHS }
-: Identifier              { LHS      $1    }
-| Identifier Range        { LHSRange $1 $2 }
-| Identifier "[" Expr "]" { LHSBit   $1 $3 }
+: Identifier              { LHS       $1    }
+| Identifier Range        { LHSRange  $1 $2 }
+| Identifier "[" Expr "]" { LHSBit    $1 $3 }
+| "{" Exprs "}"           { LHSConcat $2 }
 
 Sense :: { Sense }
 :            Sense1 { $1 }
@@ -235,6 +238,7 @@ Bindings1 :: { [(Identifier, Maybe Expr)] }
 
 Binding :: { (Identifier, Maybe Expr) }
 : "." Identifier "(" MaybeExpr ")" { ($2, $4) }
+| "." Identifier                   { ($2, Just $ ExprLHS $ LHS $2) }
 
 ParameterBindings :: { [(Identifier, Maybe Expr)] }
 :              { [] }
@@ -298,7 +302,6 @@ Expr :: { Expr }
 | Number                      { Number $1 }
 | Call                        { ExprCall $1 }
 | LHS                         { ExprLHS $1 }
-| "{" Exprs "}"               { Concat $2 }
 | "{" Expr "{" Exprs "}" "}"  { Repeat $2 $4 }
 | Expr "?" Expr ":" Expr      { Mux $1 $3 $5 }
 | Expr "||" Expr              { BinOp Or  $1 $3 }
@@ -329,7 +332,7 @@ Expr :: { Expr }
 parseError :: [Token] -> a
 parseError a = case a of
   []              -> error "Parse error: no tokens left to parse."
-  Token _ s p : _ -> error $ "Parse error: unexpected token '" ++ s ++ "' at " ++ show p ++ "."
+  Token t s p : _ -> error $ "Parse error: unexpected token '" ++ s ++ "' (" ++ show t ++ ") at " ++ show p ++ "."
 
 toString :: Token -> String
 toString = tail . init . tokenString

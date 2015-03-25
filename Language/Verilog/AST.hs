@@ -44,7 +44,7 @@ data ModuleItem
   | Reg        (Maybe Range) [(Identifier, Maybe Range)]
   | Integer    [Identifier]
   | Initial    Stmt
-  | Always     Sense Stmt
+  | Always     (Maybe Sense) Stmt
   | Assign     LHS Expr
   | Instance   Identifier [PortBinding] Identifier [PortBinding]
   deriving Eq
@@ -63,7 +63,8 @@ instance Show ModuleItem where
     Reg        r a   -> printf "reg    %s%s;" (showRange r) (commas [ a ++ showRange  r | (a, r) <- a ])
     Integer      a   -> printf "integer %s;"  $ commas a
     Initial    a     -> printf "initial\n%s" $ indent $ show a
-    Always     a b   -> printf "always @(%s)\n%s" (show a) $ indent $ show b
+    Always     Nothing  b -> printf "always\n%s" $ indent $ show b
+    Always     (Just a) b -> printf "always @(%s)\n%s" (show a) $ indent $ show b
     Assign     a b   -> printf "assign %s = %s;" (show a) (show b)
     Instance   m params i ports
       | null params -> printf "%s %s %s;"     m                                  i (showPorts show ports)
@@ -102,7 +103,6 @@ data Expr
   | Mux        Expr Expr Expr
   | Bit        Expr Int
   | Repeat     Expr [Expr]
-  | Concat     [Expr]
   deriving Eq
 
 data UniOp = Not | BWNot | UAdd | USub deriving Eq
@@ -179,7 +179,6 @@ showExpr bv a = case a of
   Mux        a b c -> printf "(%s ? %s : %s)" (s a) (s b) (s c)
   Bit        a b   -> printf "(%s [%d])" (s a) b
   Repeat     a b   -> printf "{%s {%s}}" (showExprConst a) (commas $ map s b)
-  Concat     a     -> printf "{%s}" (commas $ map s a)
   where
   s = showExpr bv
 
@@ -208,12 +207,13 @@ instance Bits Expr where
 instance Monoid Expr where
   mempty      = 0
   mappend a b = mconcat [a, b]
-  mconcat     = Concat
+  mconcat     = ExprLHS . LHSConcat
 
 data LHS
-  = LHS      Identifier
-  | LHSBit   Identifier Expr
-  | LHSRange Identifier Range
+  = LHS       Identifier
+  | LHSBit    Identifier Expr
+  | LHSRange  Identifier Range
+  | LHSConcat [Expr]
   deriving Eq
 
 instance Show LHS where
@@ -221,6 +221,7 @@ instance Show LHS where
     LHS        a        -> a
     LHSBit     a b      -> printf "%s[%s]"    a (showExprConst b)
     LHSRange   a (b, c) -> printf "%s[%s:%s]" a (showExprConst b) (showExprConst c)
+    LHSConcat  a        -> printf "{%s}" (commas $ map show a)
 
 data Stmt
   = Block                 (Maybe Identifier) [Stmt]
@@ -253,7 +254,7 @@ instance Show Stmt where
     If                    a b Null          -> printf "if (%s)\n%s"           (show a) (indent $ show b)
     If                    a b c             -> printf "if (%s)\n%s\nelse\n%s" (show a) (indent $ show b) (indent $ show c)
     StmtCall              a                 -> printf "%s;" (show a)
-    Delay                 a b               -> printf "#%s %s" (show a) (show b)
+    Delay                 a b               -> printf "#%s %s" (showExprConst a) (show b)
     Null                                    -> ";"
 
 type Case = ([Expr], Stmt)
