@@ -54,9 +54,15 @@ moduleItems db items = concatMap moduleItem items
       Output a b -> if isTop db
         then error "Ports not allowed at top level."
         else flip concatMap b $ \ b -> case lookup b $ ports db of
-            Just (ExprLHS c)
-              | elem b regNames -> [                                               Assign c $ ExprLHS $ LHS $ identifier b]  --XXX Is it okay if the reg declaration is after the assignment?
-              | otherwise       -> [Wire (maybeRange a) [(identifier b, Nothing)], Assign c $ ExprLHS $ LHS $ identifier b]
+            Just (Ident c)
+              | elem b regNames -> [                                               Assign (LHS c) $ Ident $ identifier b]  --XXX Is it okay if the reg declaration is after the assignment?
+              | otherwise       -> [Wire (maybeRange a) [(identifier b, Nothing)], Assign (LHS c) $ Ident $ identifier b]
+            Just (IdentBit c d)
+              | elem b regNames -> [                                               Assign (LHSBit c d) $ Ident $ identifier b]  --XXX Is it okay if the reg declaration is after the assignment?
+              | otherwise       -> [Wire (maybeRange a) [(identifier b, Nothing)], Assign (LHSBit c d) $ Ident $ identifier b]
+            Just (IdentRange c d)
+              | elem b regNames -> [                                               Assign (LHSRange c d) $ Ident $ identifier b]  --XXX Is it okay if the reg declaration is after the assignment?
+              | otherwise       -> [Wire (maybeRange a) [(identifier b, Nothing)], Assign (LHSRange c d) $ Ident $ identifier b]
             Nothing -> [Wire (maybeRange a) [(identifier b, Nothing)]]
             Just _  -> error "Invalid output binding."
   
@@ -103,20 +109,23 @@ moduleItems db items = concatMap moduleItem items
     LHS a -> LHS $ identifier a
     LHSBit a b -> LHSBit (identifier a) (expr b)
     LHSRange a b -> LHSRange (identifier a) (range b)
-    LHSConcat a  -> LHSConcat $ map expr a
+    LHSConcat a  -> LHSConcat $ map lhs a
   
   expr :: Expr -> Expr
   expr a = case a of
     String a -> String a
     Number a -> Number a
     ConstBool a -> ConstBool a
-    ExprLHS a -> ExprLHS $ lhs a
+    Ident a -> Ident $ identifier a
+    IdentBit a b -> IdentBit (identifier a) (expr b)
+    IdentRange a (b, c) -> IdentRange (identifier a) (expr b, expr c)
+    Repeat a b -> Repeat (expr a) $ map expr b
+    Concat a -> Concat $ map expr a
     ExprCall a -> ExprCall $ call a
     UniOp a b -> UniOp a $ expr b
     BinOp a b c -> BinOp a (expr b) (expr c)
     Mux a b c -> Mux (expr a) (expr b) (expr c)
     Bit a b -> Bit (expr a) b
-    Repeat a b -> Repeat (expr a) $ map expr b
   
   -- Lookup a parameter of an instance.
   parameter :: Identifier -> Expr -> Expr

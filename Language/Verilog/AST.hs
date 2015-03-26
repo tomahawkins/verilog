@@ -96,13 +96,16 @@ data Expr
   = String     String
   | Number     BitVec
   | ConstBool  Bool
-  | ExprLHS    LHS
+  | Ident      Identifier
+  | IdentRange Identifier Range
+  | IdentBit   Identifier Expr
+  | Repeat     Expr [Expr]
+  | Concat     [Expr]
   | ExprCall   Call
   | UniOp      UniOp Expr
   | BinOp      BinOp Expr Expr
   | Mux        Expr Expr Expr
   | Bit        Expr Int
-  | Repeat     Expr [Expr]
   deriving Eq
 
 data UniOp = Not | BWNot | UAdd | USub deriving Eq
@@ -169,16 +172,19 @@ showExprConst = showExpr showBitVecConst
 
 showExpr :: (BitVec -> String) -> Expr -> String
 showExpr bv a = case a of
-  String     a     -> printf "\"%s\"" a
-  Number     a     -> bv a
-  ConstBool  a     -> printf "1'b%s" (if a then "1" else "0")
-  ExprLHS    a     -> show a
-  ExprCall   a     -> show a
-  UniOp      a b   -> printf "(%s %s)" (show a) (s b)
-  BinOp      a b c -> printf "(%s %s %s)" (s b) (show a) (s c)
-  Mux        a b c -> printf "(%s ? %s : %s)" (s a) (s b) (s c)
-  Bit        a b   -> printf "(%s [%d])" (s a) b
-  Repeat     a b   -> printf "{%s {%s}}" (showExprConst a) (commas $ map s b)
+  String     a        -> printf "\"%s\"" a
+  Number     a        -> bv a
+  ConstBool  a        -> printf "1'b%s" (if a then "1" else "0")
+  Ident      a        -> a
+  IdentBit   a b      -> printf "%s[%s]"    a (showExprConst b)
+  IdentRange a (b, c) -> printf "%s[%s:%s]" a (showExprConst b) (showExprConst c)
+  Repeat     a b      -> printf "{%s {%s}}" (showExprConst a) (commas $ map s b)
+  Concat     a        -> printf "{%s}" (commas $ map show a)
+  ExprCall   a        -> show a
+  UniOp      a b      -> printf "(%s %s)" (show a) (s b)
+  BinOp      a b c    -> printf "(%s %s %s)" (s b) (show a) (s c)
+  Mux        a b c    -> printf "(%s ? %s : %s)" (s a) (s b) (s c)
+  Bit        a b      -> printf "(%s [%d])" (s a) b
   where
   s = showExpr bv
 
@@ -207,13 +213,13 @@ instance Bits Expr where
 instance Monoid Expr where
   mempty      = 0
   mappend a b = mconcat [a, b]
-  mconcat     = ExprLHS . LHSConcat
+  mconcat     = Concat
 
 data LHS
   = LHS       Identifier
   | LHSBit    Identifier Expr
   | LHSRange  Identifier Range
-  | LHSConcat [Expr]
+  | LHSConcat [LHS]
   deriving Eq
 
 instance Show LHS where

@@ -218,7 +218,11 @@ LHS :: { LHS }
 : Identifier              { LHS       $1    }
 | Identifier Range        { LHSRange  $1 $2 }
 | Identifier "[" Expr "]" { LHSBit    $1 $3 }
-| "{" Exprs "}"           { LHSConcat $2 }
+| "{" LHSs "}"            { LHSConcat $2 }
+
+LHSs :: { [LHS] }
+:          LHS  { [$1] } 
+| LHSs "," LHS  { $1 ++ [$3] }
 
 Sense :: { Sense }
 :            Sense1 { $1 }
@@ -238,7 +242,7 @@ Bindings1 :: { [(Identifier, Maybe Expr)] }
 
 Binding :: { (Identifier, Maybe Expr) }
 : "." Identifier "(" MaybeExpr ")" { ($2, $4) }
-| "." Identifier                   { ($2, Just $ ExprLHS $ LHS $2) }
+| "." Identifier                   { ($2, Just $ Ident $2) }
 
 ParameterBindings :: { [(Identifier, Maybe Expr)] }
 :              { [] }
@@ -301,8 +305,11 @@ Expr :: { Expr }
 | String                      { String $1 }
 | Number                      { Number $1 }
 | Call                        { ExprCall $1 }
-| LHS                         { ExprLHS $1 }
+| Identifier                  { Ident      $1    }
+| Identifier Range            { IdentRange $1 $2 }
+| Identifier "[" Expr "]"     { IdentBit   $1 $3 }
 | "{" Expr "{" Exprs "}" "}"  { Repeat $2 $4 }
+| "{" Exprs "}"               { Concat $2 }
 | Expr "?" Expr ":" Expr      { Mux $1 $3 $5 }
 | Expr "||" Expr              { BinOp Or  $1 $3 }
 | Expr "&&" Expr              { BinOp And $1 $3 }
