@@ -17,7 +17,6 @@ module Language.Verilog.AST
 import Data.Bits
 import Data.List
 import Data.Maybe
-import Data.Monoid
 import Text.Printf
 
 import Data.BitVec
@@ -202,13 +201,15 @@ instance Bits Expr where
   (.|.) = BinOp BWOr
   xor   = BinOp BWXor
   complement = UniOp BWNot
-  shift   = error "Not supported: shift"
-  rotate  = error "Not supported: rotate"
-  bitSize = error "Not supported: bitSize"
   isSigned _ = False
-  testBit = undefined
-  bit = undefined
-  popCount = undefined
+  shift        = error "Not supported: shift"
+  rotate       = error "Not supported: rotate"
+  bitSize      = error "Not supported: bitSize"
+  bitSizeMaybe = error "Not supported: bitSizeMaybe"
+  testBit      = error "Not supported: testBit"
+  bit          = error "Not supported: bit"
+  popCount     = error "Not supported: popCount"
+
 
 instance Monoid Expr where
   mempty      = 0

@@ -8,7 +8,6 @@ module Data.BitVec
   ) where
 
 import Data.Bits
-import Data.Monoid
 
 data BitVec = BitVec Int Integer deriving (Show, Eq)
 
@@ -36,7 +35,9 @@ instance Bits BitVec where
   bit i = fromInteger $ bit i
   testBit (BitVec _ v) i = testBit v i
   bitSize (BitVec w _) = w
+  bitSizeMaybe (BitVec w _) = Just w
   isSigned _ = False
+  popCount (BitVec _ v) = popCount v
 
 instance Monoid BitVec where
   mempty = BitVec 0 0
