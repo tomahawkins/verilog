@@ -13,7 +13,7 @@ import Language.Verilog.Parser.Tokens
 
 -- | Parses a file given a table of predefined macros, the file name, and the file contents.
 parseFile :: [(Text, Text)] -> FilePath -> Text -> [Module]
-parseFile env file content = modules tokens
+parseFile env file content = ast tokens
   where
   tokens = fmap relocate $ lexer file $ preprocess env file content
   relocate :: Token -> Token
