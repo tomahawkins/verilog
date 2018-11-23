@@ -3,6 +3,7 @@ module Language.Verilog.Parser.Parse (modules) where
 
 import Data.Bits
 import Data.List
+import qualified Data.Text as T
 
 import Data.BitVec
 import Language.Verilog.AST

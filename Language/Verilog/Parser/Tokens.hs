@@ -5,6 +5,7 @@ module Language.Verilog.Parser.Tokens
   , tokenString
   ) where
 
+import Data.Text
 import Text.Printf
 
 tokenString :: Token -> String
