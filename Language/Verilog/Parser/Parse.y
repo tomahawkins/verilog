@@ -13,8 +13,6 @@ import Language.Verilog.Parser.Tokens
 %tokentype { Token }
 %error { parseError }
 
-%expect 0
-
 %token
 
 "always"           { Token KW_always     _ _ }
@@ -169,8 +167,13 @@ ModulePortList :: { [Identifier] }
 | "(" ModulePortList1 ")" { $2 }
 
 ModulePortList1 :: { [Identifier] }
-:                     Identifier  { [$1] }
-| ModulePortList1 "," Identifier  { $1 ++ [$3] }
+:                     PortDirection opt(Range) Identifier  { [$3] }
+| ModulePortList1 "," PortDirection opt(Range) Identifier  { $1 ++ [$5] }
+
+PortDirection :: { () }
+: "input"  { () }
+| "output" { () }
+
 
 ModuleItems :: { [ModuleItem] }
 :                         { [] }
@@ -286,6 +289,7 @@ String :: { String }
 
 Call :: { Call }
 : Identifier "(" CallArgs ")"  { Call $1 $3 }
+| Identifier  { Call $1 [] }
 
 CallArgs :: { [Expr] }
 CallArgs
@@ -324,6 +328,7 @@ Expr :: { Expr }
 | Expr ">=" Expr              { BinOp Ge $1 $3 }
 | Expr "<<" Expr              { BinOp ShiftL $1 $3 }
 | Expr ">>" Expr              { BinOp ShiftR $1 $3 }
+| Expr ">>>" Expr             { BinOp ShiftR $1 $3 }
 | Expr "+"  Expr              { BinOp Add $1 $3 }
 | Expr "-"  Expr              { BinOp Sub $1 $3 }
 | Expr "*"  Expr              { BinOp Mul $1 $3 }
@@ -334,6 +339,9 @@ Expr :: { Expr }
 | "+" Expr %prec UPlus        { UniOp UAdd $2 }
 | "-" Expr %prec UMinus       { UniOp USub $2 }
 
+
+opt(p) : p { Just $1 }
+       |   { Nothing }
 
 {
 parseError :: [Token] -> a
@@ -359,6 +367,7 @@ toNumber = number . tokenString
     f a 
       | isPrefixOf "'d" a = read $ drop 2 a
       | isPrefixOf "'h" a = read $ "0x" ++ drop 2 a
+      | isPrefixOf "'sh" a = read $ "0x" ++ drop 3 a
       | isPrefixOf "'b" a = foldl (\ n b -> shiftL n 1 .|. (if b == '1' then 1 else 0)) 0 (drop 2 a)
       | otherwise         = error $ "Invalid number format: " ++ a
 

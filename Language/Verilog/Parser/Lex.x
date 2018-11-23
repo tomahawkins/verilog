@@ -18,10 +18,12 @@ $decimalDigit = [0-9]
 @octalDigit   = [0-7]
 @hexDigit     = [0-9a-fA-F]
 
+$sign = [\+\-]
+
 @decimalBase = "'" [dD]
 @binaryBase  = "'" [bB]
 @octalBase   = "'" [oO]
-@hexBase     = "'" [hH]
+@hexBase     = "'" [s]? [hH]
 
 @binaryValue         = @binaryDigit ("_" | @binaryDigit)*
 @octalValue  = @octalDigit  ("_" | @octalDigit)*
@@ -29,7 +31,7 @@ $decimalDigit = [0-9]
 
 @unsignedNumber = $decimalDigit ("_" | $decimalDigit)*
 
-@size = @unsignedNumber
+@size = $sign? @unsignedNumber
 
 @decimalNumber
   = @unsignedNumber
@@ -37,10 +39,10 @@ $decimalDigit = [0-9]
 
 @binaryNumber = @size? @binaryBase @binaryValue
 @octalNumber  = @size? @octalBase  @octalValue
-@hexNumber    = @size? @hexBase    @hexValue
+@hexNumber    = @size? @hexBase @hexValue
   
 -- $exp  = [eE]
--- $sign = [\+\-]
+
 -- @realNumber = unsignedNumber "." unsignedNumber | unsignedNumber ( "." unsignedNumber)? exp sign? unsignedNumber
 @number = @decimalNumber | @octalNumber | @binaryNumber | @hexNumber
 
