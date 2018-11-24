@@ -176,13 +176,13 @@ PortDirection :: { () }
 | "output" { () }
 
 ModuleItem :: { ModuleItem }
-: "parameter"  MaybeRange Identifier "=" Expr ";"       { Parameter  $2 $3 $5 }
-| "localparam" MaybeRange Identifier "=" Expr ";"       { Localparam $2 $3 $5 }
-| "input"  MaybeRange sepBy1(Identifier, ",") ";"       { Input  $2 $3 }
-| "output" MaybeRange sepBy1(Identifier, ",") ";"       { Output $2 $3 }
-| "inout"  MaybeRange sepBy1(Identifier, ",") ";"       { Inout  $2 $3 }
-| "reg"    MaybeRange RegDeclaration ";"                { Reg    $2 $3 }
-| "wire"   MaybeRange sepBy1(WireDeclaration, ",") ";"  { Wire   $2 $3 }
+: "parameter"  opt(Range) Identifier "=" Expr ";"       { Parameter  $2 $3 $5 }
+| "localparam" opt(Range) Identifier "=" Expr ";"       { Localparam $2 $3 $5 }
+| "input"  opt(Range) sepBy1(Identifier, ",") ";"       { Input  $2 $3 }
+| "output" opt(Range) sepBy1(Identifier, ",") ";"       { Output $2 $3 }
+| "inout"  opt(Range) sepBy1(Identifier, ",") ";"       { Inout  $2 $3 }
+| "reg"    opt(Range) RegDeclaration ";"                { Reg    $2 $3 }
+| "wire"   opt(Range) sepBy1(WireDeclaration, ",") ";"  { Wire   $2 $3 }
 | "integer" sepBy1(Identifier, ",") ";"                 { Integer $2 }
 | "assign" LHS "=" Expr ";"                             { Assign $2 $4 }
 | "initial" Stmt                                        { Initial $2 }
@@ -191,16 +191,12 @@ ModuleItem :: { ModuleItem }
 | Identifier ParameterBindings Identifier Bindings ";"  { Instance $1 $2 $3 $4 }
 
 RegDeclaration :: { [(Identifier, Maybe Range)] }
-:                    Identifier MaybeRange    { [($1, $2)]       }
-| RegDeclaration "," Identifier MaybeRange    { $1 ++ [($3, $4)] }
+:                    Identifier opt(Range)    { [($1, $2)]       }
+| RegDeclaration "," Identifier opt(Range)    { $1 ++ [($3, $4)] }
 
 WireDeclaration :: { (Identifier, Maybe Expr) }
 : Identifier               { ($1, Nothing) }
 | Identifier "=" Expr      { ($1, Just $3) }
-
-MaybeRange :: { Maybe Range }
-:         { Nothing }
-| Range   { Just $1 }
 
 Range :: { Range }
 : "[" Expr ":" Expr "]"  { ($2, $4) }
@@ -239,7 +235,7 @@ Stmt :: { Stmt }
 : ";" { Null }
 | "begin"                many(Stmt) "end"               { Block Nothing   $2 }
 | "begin" ":" Identifier many(Stmt) "end"               { Block (Just $3) $4 }
-| "reg" MaybeRange RegDeclaration ";"                   { StmtReg $2 $3      }
+| "reg" opt(Range) RegDeclaration ";"                   { StmtReg $2 $3      }
 | "integer" sepBy1(Identifier, ",") ";"                 { StmtInteger $2     }
 | "if" "(" Expr ")" Stmt "else" Stmt                    { If $3 $5 $7        }
 | "if" "(" Expr ")" Stmt %prec NoElse                   { If $3 $5 Null      }
@@ -276,7 +272,7 @@ Expr :: { Expr }
 : "(" Expr ")"                { $2 }
 | String                      { String $1 }
 | Number                      { Number $1 }
-| Call                        { ExprCall $1 }
+| Identifier "(" CallArgs ")" { ExprCall (Call $1 $3) }
 | Identifier                  { Ident      $1    }
 | Identifier Range            { IdentRange $1 $2 }
 | Identifier "[" Expr "]"     { IdentBit   $1 $3 }
