@@ -3,6 +3,8 @@ module Language.Verilog.Parser
   , preprocess
   ) where
 
+import Data.Text
+
 import Language.Verilog.AST
 import Language.Verilog.Parser.Lex
 import Language.Verilog.Parser.Parse
@@ -10,10 +12,10 @@ import Language.Verilog.Parser.Preprocess
 import Language.Verilog.Parser.Tokens
 
 -- | Parses a file given a table of predefined macros, the file name, and the file contents.
-parseFile :: [(String, String)] -> FilePath -> String -> [Module]
-parseFile env file content = modules tokens
+parseFile :: [(Text, Text)] -> FilePath -> Text -> [Module]
+parseFile env file content = ast tokens
   where
-  tokens = map relocate $ alexScanTokens $ preprocess env file content
+  tokens = fmap relocate $ lexer file $ preprocess env file content
   relocate :: Token -> Token
   relocate (Token t s (Position _ l c)) = Token t s $ Position file l c
 
